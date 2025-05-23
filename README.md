@@ -16,7 +16,7 @@ A modern employee scheduling system with WhatsApp integration, AI-powered query 
 - **Backend:** Node.js, Express, MongoDB
 - **Frontend:** React.js, Tailwind CSS
 - **Authentication:** JWT, bcrypt
-- **Notifications:** Twilio (WhatsApp), Nodemailer (Email)
+- **Notifications:** Meta WhatsApp Cloud API, Nodemailer (Email)
 - **AI Processing:** Azure OpenAI, Azure Speech Services
 - **Location & Traffic:** Azure Maps
 
@@ -37,7 +37,7 @@ A modern employee scheduling system with WhatsApp integration, AI-powered query 
 
 ### Phase 3: Notification System (1-2 days)
 - Implement email notification service
-- Set up Twilio for WhatsApp integration
+- Set up Meta WhatsApp Cloud API integration
 - Create notification templates
 - Develop notification sending endpoints
 - Build notification management UI
@@ -66,7 +66,7 @@ A modern employee scheduling system with WhatsApp integration, AI-powered query 
 ### Prerequisites
 - Node.js (v14 or higher)
 - MongoDB
-- Twilio account
+- Meta Developer Account (for WhatsApp Cloud API)
 - Azure account (for OpenAI, Speech Services, and Maps)
 
 ### Installation
@@ -86,9 +86,9 @@ A modern employee scheduling system with WhatsApp integration, AI-powered query 
    PORT=5000
    MONGO_URI=your_mongodb_connection_string
    JWT_SECRET=your_jwt_secret
-   TWILIO_ACCOUNT_SID=your_twilio_account_sid
-   TWILIO_AUTH_TOKEN=your_twilio_auth_token
-   TWILIO_PHONE_NUMBER=your_twilio_phone_number
+   META_WHATSAPP_TOKEN=your_meta_whatsapp_token
+META_WHATSAPP_PHONE_NUMBER_ID=your_meta_whatsapp_phone_number_id
+META_WHATSAPP_VERIFY_TOKEN=your_meta_whatsapp_verify_token
    EMAIL_SERVICE=your_email_service
    EMAIL_USER=your_email_user
    EMAIL_PASSWORD=your_email_password

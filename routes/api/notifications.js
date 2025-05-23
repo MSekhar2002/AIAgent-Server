@@ -9,7 +9,7 @@ const Location = require('../../models/Location');
 const { sendEmail } = require('../../utils/emailService');
 const { sendWhatsAppMessage } = require('../../utils/whatsappService');
 const { getTrafficData, getRouteInfo } = require('../../utils/mapsService');
-
+const mongoose = require('mongoose');
 // @route   POST api/notifications
 // @desc    Create and send a notification
 // @access  Private/Admin
@@ -39,16 +39,23 @@ router.post('/', [auth, admin], async (req, res) => {
     // Create and send notifications for each recipient
     const notificationPromises = users.map(async (user) => {
       try {
-        // Create notification record
-        const notification = new Notification({
+        // Prepare notification data
+        const notificationData = {
           type: type || 'email',
           recipient: user._id,
           subject,
           content,
           relatedTo: relatedTo || 'other',
-          relatedId,
           createdBy: req.user.id
-        });
+        };
+
+        // Only add relatedId if it's provided, not empty, and is a valid ObjectId format
+        if (relatedId && relatedId.trim() !== '' && mongoose.Types.ObjectId.isValid(relatedId)) {
+          notificationData.relatedId = relatedId;
+        }
+
+        // Create notification record
+        const notification = new Notification(notificationData);
 
         await notification.save();
 

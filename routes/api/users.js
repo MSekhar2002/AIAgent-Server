@@ -6,7 +6,7 @@ const auth = require('../../middleware/auth');
 const admin = require('../../middleware/admin');
 const User = require('../../models/User');
 const { sendWelcomeEmail } = require('../../utils/emailService');
-const { sendWhatsAppMessage } = require('../../utils/whatsappService');
+const { sendWhatsAppMessage, sendWelcomeWhatsApp } = require('../../utils/whatsappService');
 
 // @route   POST api/users
 // @desc    Register a user (Admin creates employee)
@@ -60,12 +60,9 @@ router.post('/', [auth, admin], async (req, res) => {
         await sendWelcomeEmail(user);
       }
 
-      // Send WhatsApp message
+      // Send WhatsApp welcome message
       if (user.notificationPreferences.whatsapp && user.phone) {
-        await sendWhatsAppMessage(
-          user.phone,
-          `Welcome to the Employee Scheduling System, ${user.name}! You can now receive schedule updates and query your work schedule through WhatsApp.`
-        );
+        await sendWelcomeWhatsApp(user, 'Employee Scheduling System');
       }
     } catch (notificationErr) {
       console.error('Notification error:', notificationErr.message);
@@ -128,6 +125,22 @@ router.post('/register', async (req, res) => {
 
     // Save user
     await user.save();
+
+    // Send welcome notifications
+    try {
+      // Send welcome email
+      if (user.notificationPreferences.email) {
+        await sendWelcomeEmail(user);
+      }
+
+      // Send WhatsApp welcome message
+      if (user.notificationPreferences.whatsapp && user.phone) {
+        await sendWelcomeWhatsApp(user, 'Employee Scheduling System');
+      }
+    } catch (notificationErr) {
+      console.error('Notification error:', notificationErr.message);
+      // Continue even if notification fails
+    }
 
     // Return JWT
     const payload = {
