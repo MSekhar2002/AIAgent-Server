@@ -37,6 +37,12 @@ app.use('/api/locations', require('./routes/api/locations'));
 app.use('/api/notifications', require('./routes/api/notifications'));
 app.use('/api/whatsapp', require('./routes/api/whatsapp'));
 app.use('/api/dashboard', require('./routes/api/dashboard'));
+app.use('/api/absences', require('./routes/api/absences'));
+app.use('/api/hour-tracking', require('./routes/api/hourTracking'));
+app.use('/api/language-settings', require('./routes/api/languageSettings'));
+app.use('/api/daily-briefing', require('./routes/api/dailyBriefing'));
+app.use('/api/schedule-matrix', require('./routes/api/scheduleMatrix'));
+app.use('/api/traffic', require('./routes/api/traffic'));
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

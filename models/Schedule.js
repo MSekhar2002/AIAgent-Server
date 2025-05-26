@@ -31,6 +31,14 @@ const ScheduleSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'user'
   }],
+  absences: [{
+    type: Schema.Types.ObjectId,
+    ref: 'absence'
+  }],
+  hourTracking: [{
+    type: Schema.Types.ObjectId,
+    ref: 'hourTracking'
+  }],
   createdBy: {
     type: Schema.Types.ObjectId,
     ref: 'user',
@@ -58,6 +66,14 @@ const ScheduleSchema = new Schema({
     type: String,
     enum: ['scheduled', 'in-progress', 'completed', 'cancelled'],
     default: 'scheduled'
+  },
+  requireHourTracking: {
+    type: Boolean,
+    default: true
+  },
+  allowAutoReplacement: {
+    type: Boolean,
+    default: false
   },
   createdAt: {
     type: Date,

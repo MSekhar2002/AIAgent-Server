@@ -106,7 +106,14 @@ router.post('/webhook', async (req, res) => {
               });
               
               // Convert voice message to text using Azure Speech Services
+              // Pass the binary audio data directly to the speech service
               messageContent = await convertSpeechToText(mediaContent.data);
+              
+              // Log successful voice transcription
+              console.log('Voice message transcribed:', messageContent);
+              
+              // Inform user their voice message was received and processed
+              await sendWhatsAppMessage(phoneNumber, `Voice message received. I understood: "${messageContent}". Processing your request...`);
             } catch (speechErr) {
               console.error('Speech-to-text error:', speechErr.message);
               messageContent = 'Sorry, I couldn\'t understand your voice message. Please try again or send a text message.';
@@ -396,6 +403,10 @@ router.post('/webhook', async (req, res) => {
                 console.error('Route options error:', routeErr.message);
                 response = `I'm having trouble getting route options right now. Please try again later.`;
               }
+            } else if (user.role === 'admin' && messageContent.toLowerCase().startsWith('/admin')) {
+              // Handle admin commands
+              const command = messageContent.substring(7).trim();
+              response = await handleAdminCommand(command, user, phoneNumber);
             } else {
               // For other queries, use Azure OpenAI to generate a response
               const conversationHistory = conversation.messages.map(msg => ({
@@ -570,5 +581,215 @@ router.put('/settings', [auth, admin], async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
+
+// Admin command handler for WhatsApp
+async function handleAdminCommand(command, user, phoneNumber) {
+  try {
+    // Split command into parts
+    const parts = command.split(' ');
+    const action = parts[0].toLowerCase();
+    
+    // Handle different admin commands
+    switch (action) {
+      case 'help':
+        return `*Admin Commands*\n\n` +
+               `/admin help - Show this help message\n` +
+               `/admin users - List all users\n` +
+               `/admin schedules - List today's schedules\n` +
+               `/admin broadcast [message] - Send message to all users\n` +
+               `/admin notify [userId] [message] - Send message to specific user\n` +
+               `/admin status - Show system status\n` +
+               `/admin absences - Show pending absence requests`;
+      
+      case 'users':
+        const users = await User.find().select('name email phone role department position');
+        let userList = '*User List*\n\n';
+        
+        users.forEach((u, index) => {
+          userList += `${index + 1}. ${u.name} (${u.role})\n`;
+          userList += `   ID: ${u._id}\n`;
+          userList += `   Dept: ${u.department || 'N/A'}\n`;
+          userList += `   Phone: ${u.phone || 'N/A'}\n\n`;
+        });
+        
+        return userList;
+      
+      case 'schedules':
+        // Get today's date range
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        
+        // Find schedules for today
+        const schedules = await Schedule.find({
+          date: { $gte: today, $lt: tomorrow }
+        }).populate('location assignedEmployees', 'name address city');
+        
+        if (schedules.length === 0) {
+          return 'No schedules found for today.';
+        }
+        
+        let scheduleList = '*Today\'s Schedules*\n\n';
+        
+        schedules.forEach((schedule, index) => {
+          scheduleList += `${index + 1}. ${schedule.title}\n`;
+          scheduleList += `   Time: ${schedule.startTime} - ${schedule.endTime}\n`;
+          scheduleList += `   Location: ${schedule.location.name}\n`;
+          scheduleList += `   Employees: ${schedule.assignedEmployees.map(e => e.name).join(', ')}\n\n`;
+        });
+        
+        return scheduleList;
+      
+      case 'broadcast':
+        if (parts.length < 2) {
+          return 'Error: Message is required for broadcast command.';
+        }
+        
+        const broadcastMessage = parts.slice(1).join(' ');
+        const allUsers = await User.find().select('phone');
+        let sentCount = 0;
+        
+        // Send message to all users with phone numbers
+        for (const u of allUsers) {
+          if (u.phone) {
+            await sendWhatsAppMessage(u.phone, `*BROADCAST MESSAGE FROM ADMIN*\n\n${broadcastMessage}`);
+            sentCount++;
+          }
+        }
+        
+        return `Broadcast message sent to ${sentCount} users.`;
+      
+      case 'notify':
+        if (parts.length < 3) {
+          return 'Error: User ID and message are required for notify command.';
+        }
+        
+        const userId = parts[1];
+        const notifyMessage = parts.slice(2).join(' ');
+        
+        // Find user by ID
+        const targetUser = await User.findById(userId);
+        
+        if (!targetUser) {
+          return `Error: User with ID ${userId} not found.`;
+        }
+        
+        if (!targetUser.phone) {
+          return `Error: User ${targetUser.name} does not have a phone number.`;
+        }
+        
+        // Send message to user
+        await sendWhatsAppMessage(targetUser.phone, `*MESSAGE FROM ADMIN*\n\n${notifyMessage}`);
+        
+        return `Message sent to ${targetUser.name}.`;
+      
+      case 'status':
+        // Get system status
+        const userCount = await User.countDocuments();
+        const scheduleCount = await Schedule.countDocuments();
+        const locationCount = await Location.countDocuments();
+        const activeConversations = await Conversation.countDocuments({ active: true });
+        
+        return `*System Status*\n\n` +
+               `Users: ${userCount}\n` +
+               `Schedules: ${scheduleCount}\n` +
+               `Locations: ${locationCount}\n` +
+               `Active Conversations: ${activeConversations}\n` +
+               `Server Time: ${new Date().toLocaleString()}`;
+      
+      case 'absences':
+        // Get pending absence requests
+        const Absence = require('../../models/Absence');
+        const pendingAbsences = await Absence.find({ status: 'pending' })
+          .populate('user', 'name department position')
+          .sort({ startDate: 1 });
+        
+        if (pendingAbsences.length === 0) {
+          return 'No pending absence requests found.';
+        }
+        
+        let absenceList = '*Pending Absence Requests*\n\n';
+        
+        pendingAbsences.forEach((absence, index) => {
+          const startDate = new Date(absence.startDate).toLocaleDateString();
+          const endDate = new Date(absence.endDate).toLocaleDateString();
+          
+          absenceList += `${index + 1}. ${absence.user.name} (${absence.user.department})\n`;
+          absenceList += `   Period: ${startDate} to ${endDate}\n`;
+          absenceList += `   Reason: ${absence.reason}\n`;
+          absenceList += `   ID: ${absence._id}\n\n`;
+        });
+        
+        absenceList += 'To approve: /admin approve [absenceId]\n';
+        absenceList += 'To reject: /admin reject [absenceId]';
+        
+        return absenceList;
+      
+      case 'approve':
+        if (parts.length < 2) {
+          return 'Error: Absence ID is required for approve command.';
+        }
+        
+        const approveId = parts[1];
+        const Absence1 = require('../../models/Absence');
+        const absenceToApprove = await Absence1.findById(approveId).populate('user', 'name phone');
+        
+        if (!absenceToApprove) {
+          return `Error: Absence with ID ${approveId} not found.`;
+        }
+        
+        absenceToApprove.status = 'approved';
+        absenceToApprove.approvedBy = user._id;
+        absenceToApprove.approvedAt = Date.now();
+        await absenceToApprove.save();
+        
+        // Notify user of approval
+        if (absenceToApprove.user.phone) {
+          await sendWhatsAppMessage(
+            absenceToApprove.user.phone,
+            `Your absence request from ${new Date(absenceToApprove.startDate).toLocaleDateString()} to ${new Date(absenceToApprove.endDate).toLocaleDateString()} has been approved.`
+          );
+        }
+        
+        return `Absence request for ${absenceToApprove.user.name} has been approved.`;
+      
+      case 'reject':
+        if (parts.length < 2) {
+          return 'Error: Absence ID is required for reject command.';
+        }
+        
+        const rejectId = parts[1];
+        const Absence2 = require('../../models/Absence');
+        const absenceToReject = await Absence2.findById(rejectId).populate('user', 'name phone');
+        
+        if (!absenceToReject) {
+          return `Error: Absence with ID ${rejectId} not found.`;
+        }
+        
+        absenceToReject.status = 'rejected';
+        absenceToReject.approvedBy = user._id;
+        absenceToReject.approvedAt = Date.now();
+        await absenceToReject.save();
+        
+        // Notify user of rejection
+        if (absenceToReject.user.phone) {
+          await sendWhatsAppMessage(
+            absenceToReject.user.phone,
+            `Your absence request from ${new Date(absenceToReject.startDate).toLocaleDateString()} to ${new Date(absenceToReject.endDate).toLocaleDateString()} has been rejected.`
+          );
+        }
+        
+        return `Absence request for ${absenceToReject.user.name} has been rejected.`;
+      
+      default:
+        return `Unknown admin command: ${action}\n\nType /admin help for available commands.`;
+    }
+  } catch (error) {
+    console.error('Admin command error:', error.message);
+    return `Error executing admin command: ${error.message}`;
+  }
+}
 
 module.exports = router;
