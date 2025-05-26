@@ -87,7 +87,7 @@ router.post('/webhook', async (req, res) => {
               // Get media URL from Meta
               const client = createMetaClient();
               const mediaResponse = await axios.get(
-                `https://graph.facebook.com/v17.0/${mediaId}`,
+                `https://graph.facebook.com/v22.0/${mediaId}`,
                 {
                   headers: {
                     'Authorization': `Bearer ${client.token}`
