@@ -1,4 +1,5 @@
 import { AzureOpenAI } from "openai";
+import { detectMultipleIntents } from "./aiService.js";
 
 // Create Azure OpenAI client using the modern SDK
 const createOpenAIClient = () => {
@@ -49,6 +50,9 @@ export const classifyIntent = async (message) => {
         Examples: "Show me all users", "List today's schedules", "Send a message to everyone", "Show pending absences"
         Note: Classify as admin_command even WITHOUT the /admin prefix if the intent is administrative in nature
       
+      - employee_query: Questions about which employees are working or absent
+        Examples: "Who is working today?", "Show me employees on duty", "Who is absent today?", "List staff on leave"
+
       - general_question: General questions about the company, policies, or other work-related topics
         Examples: "What are the company holidays?", "Tell me about the dress code", "How does the bonus system work?"
       
@@ -76,7 +80,8 @@ export const classifyIntent = async (message) => {
       "route_query", 
       "absence_request", 
       "general_question", 
-      "admin_command"
+      "admin_command",
+      "employee_query"
     ];
     
     return validIntents.includes(intent) ? intent : "general_question";
@@ -84,5 +89,38 @@ export const classifyIntent = async (message) => {
     console.error("Intent classification error:", error.message);
     // Default to general_question if classification fails
     return "general_question";
+  }
+};
+
+/**
+ * Classify user message for multiple intents using Azure OpenAI
+ * @param {string} message - User message to classify
+ * @returns {Promise<Array<string>>} - Array of classified intents
+ */
+export const classifyMultipleIntents = async (message) => {
+  try {
+    // Use the detectMultipleIntents function from aiService.js
+    const intents = await detectMultipleIntents(message);
+    
+    // Validate that all returned intents are expected
+    const validIntents = [
+      "schedule_query", 
+      "traffic_query", 
+      "route_query", 
+      "absence_request", 
+      "general_question", 
+      "admin_command",
+      "employee_query"
+    ];
+    
+    // Filter out any invalid intents
+    const validatedIntents = intents.filter(intent => validIntents.includes(intent));
+    
+    // If no valid intents remain, default to general_question
+    return validatedIntents.length > 0 ? validatedIntents : ["general_question"];
+  } catch (error) {
+    console.error("Multiple intent classification error:", error.message);
+    // Default to general_question if classification fails
+    return ["general_question"];
   }
 };

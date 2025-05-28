@@ -86,7 +86,7 @@ router.post('/webhook', async (req, res) => {
               
               // Get media URL from Meta
               const client = createMetaClient();
-               const mediaResponse = await axios.get(
+              const mediaResponse = await axios.get(
                 `https://graph.facebook.com/v22.0/${mediaId}`,
                 {
                   headers: {
@@ -165,41 +165,218 @@ router.post('/webhook', async (req, res) => {
           let intent;
           
           try {
-            // Import the intent classifier
-            const { classifyIntent } = require('../../utils/intentClassifier');
+            // Import the intent classifier and AI service
+            const { classifyIntent, classifyMultipleIntents } = require('../../utils/intentClassifier');
+            const { generateQueryParameters } = require('../../utils/aiService');
             
             // Classify the message intent
             intent = await classifyIntent(messageContent);
             console.log(`Classified intent: ${intent} for message: "${messageContent}"`);
             
-            // Add the intent to the conversation context
+            // Check for multiple intents
+            const multipleIntents = await classifyMultipleIntents(messageContent);
+            console.log(`Multiple intents detected: ${multipleIntents.join(', ')}`);
+            
+            // Generate query parameters based on the message and intent
+            const queryParams = await generateQueryParameters(messageContent, intent, user);
+            console.log(`Generated query parameters:`, queryParams);
+            
+            // Add the intent and query parameters to the conversation context
             conversation.context.lastIntent = intent;
+            conversation.context.multipleIntents = multipleIntents;
+            conversation.context.queryParams = queryParams;
             await conversation.save(); 
             
             // Process based on intent
             if (intent === 'schedule_query') {
-              // Get today's date range
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
+              // Use query parameters from AI to determine date range
+              const queryParams = conversation.context.queryParams || {};
               
-              const tomorrow = new Date(today);
-              tomorrow.setDate(tomorrow.getDate() + 1);
+              // Check if user is requesting all schedules
+              const requestingAllSchedules = (
+                messageContent.toLowerCase().includes('all schedules') ||
+                messageContent.toLowerCase().includes('all the schedules') ||
+                messageContent.toLowerCase().includes('every schedule') ||
+                messageContent.toLowerCase().includes('irrespective of date') ||
+                messageContent.toLowerCase().includes('regardless of date') ||
+                (messageContent.toLowerCase().includes('all') && 
+                 !messageContent.toLowerCase().includes('today') && 
+                 !messageContent.toLowerCase().includes('tomorrow') && 
+                 !messageContent.toLowerCase().includes('yesterday') && 
+                 !messageContent.toLowerCase().includes('next'))
+              );
               
-              // Find schedules for today where user is assigned
-              const schedules = await Schedule.find({
+              // Build query based on extracted parameters
+              const query = {
                 assignedEmployees: user._id,
-                date: { $gte: today, $lt: tomorrow }
-              }).populate('location', 'name address city state');
+                status: { $ne: 'cancelled' }
+              };
+              
+              // Handle date filtering based on query parameters
+              if (queryParams.date) {
+                const dateParam = queryParams.date.toLowerCase();
+                
+                if (dateParam === 'today') {
+                  // Today's date range
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  
+                  const tomorrow = new Date(today);
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  
+                  query.date = { $gte: today, $lt: tomorrow };
+                } else if (dateParam === 'tomorrow') {
+                  // Tomorrow's date range
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  tomorrow.setHours(0, 0, 0, 0);
+                  
+                  const dayAfterTomorrow = new Date(tomorrow);
+                  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+                  
+                  query.date = { $gte: tomorrow, $lt: dayAfterTomorrow };
+                } else if (dateParam === 'this week') {
+                  // This week's date range
+                  const today = new Date();
+                  const day = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+                  
+                  // Calculate start of week (Sunday)
+                  const startOfWeek = new Date(today);
+                  startOfWeek.setDate(today.getDate() - day);
+                  startOfWeek.setHours(0, 0, 0, 0);
+                  
+                  // Calculate end of week (Saturday)
+                  const endOfWeek = new Date(startOfWeek);
+                  endOfWeek.setDate(startOfWeek.getDate() + 7);
+                  
+                  query.date = { $gte: startOfWeek, $lt: endOfWeek };
+                } else if (dateParam === 'next week') {
+                  // Next week's date range
+                  const today = new Date();
+                  const day = today.getDay();
+                  
+                  // Calculate start of next week (next Sunday)
+                  const startOfNextWeek = new Date(today);
+                  startOfNextWeek.setDate(today.getDate() + (7 - day));
+                  startOfNextWeek.setHours(0, 0, 0, 0);
+                  
+                  // Calculate end of next week (next Saturday)
+                  const endOfNextWeek = new Date(startOfNextWeek);
+                  endOfNextWeek.setDate(startOfNextWeek.getDate() + 7);
+                  
+                  query.date = { $gte: startOfNextWeek, $lt: endOfNextWeek };
+                } else {
+                  // Try to parse as a specific date
+                  try {
+                    const specificDate = new Date(dateParam);
+                    if (!isNaN(specificDate.getTime())) {
+                      // Valid date
+                      specificDate.setHours(0, 0, 0, 0);
+                      
+                      const nextDay = new Date(specificDate);
+                      nextDay.setDate(specificDate.getDate() + 1);
+                      
+                      query.date = { $gte: specificDate, $lt: nextDay };
+                    }
+                  } catch (e) {
+                    // Invalid date format, use default (today)
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    const tomorrow = new Date(today);
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    
+                    query.date = { $gte: today, $lt: tomorrow };
+                  }
+                }
+              } else if (requestingAllSchedules) {
+                // No date filtering for 'all schedules'
+              } else {
+                // Default to today if no date specified
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                
+                query.date = { $gte: today, $lt: tomorrow };
+              }
+              
+              // Add schedule_id if specified
+              if (queryParams.schedule_id) {
+                query._id = queryParams.schedule_id;
+              }
+              
+              // Fetch schedules based on the constructed query
+              const schedules = await Schedule.find(query)
+                .populate('location', 'name address city state')
+                .sort({ date: 1, startTime: 1 });
               
               if (schedules.length === 0) {
-                response = `You don't have any schedules for today, ${user.name}.`;
+                // Determine appropriate response based on query
+                if (query.date) {
+                  const dateDescription = queryParams.date || 'the specified date';
+                  response = `You don't have any schedules for ${dateDescription}, ${user.name}.`;
+                } else {
+                  response = `You don't have any schedules assigned to you, ${user.name}.`;
+                }
               } else {
-                response = `Hello ${user.name}, here's your schedule for today:\n\n`;
-                
-                for (const schedule of schedules) {
-                  response += `- ${schedule.title}\n`;
-                  response += `  Time: ${schedule.startTime} - ${schedule.endTime}\n`;
-                  response += `  Location: ${schedule.location.name}, ${schedule.location.address}, ${schedule.location.city}\n\n`;
+                // Format response based on query
+                if (requestingAllSchedules || !query.date) {
+                  response = `Hello ${user.name}, here are all your schedules (${schedules.length} total):\n\n`;
+                  
+                  // Group schedules by date for better readability
+                  const schedulesByDate = {};
+                  
+                  schedules.forEach(schedule => {
+                    const scheduleDate = new Date(schedule.date);
+                    const dateStr = scheduleDate.toLocaleDateString(undefined, { 
+                      weekday: 'long', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    });
+                    
+                    if (!schedulesByDate[dateStr]) {
+                      schedulesByDate[dateStr] = [];
+                    }
+                    
+                    schedulesByDate[dateStr].push(schedule);
+                  });
+                  
+                  // Format output by date groups
+                  Object.keys(schedulesByDate).forEach(dateStr => {
+                    response += `*${dateStr}*\n`;
+                    
+                    schedulesByDate[dateStr].forEach((schedule, index) => {
+                      // Format times properly
+                      let startTimeStr = schedule.startTimeString || 
+                        (schedule.startTime ? new Date(schedule.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+                      
+                      let endTimeStr = schedule.endTimeString || 
+                        (schedule.endTime ? new Date(schedule.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+                      
+                      response += `${index + 1}. ${schedule.title}\n`;
+                      response += `   Time: ${startTimeStr} - ${endTimeStr}\n`;
+                      response += `   Location: ${schedule.location ? schedule.location.name : 'Unknown'}${schedule.location && schedule.location.address ? ', ' + schedule.location.address : ''}${schedule.location && schedule.location.city ? ', ' + schedule.location.city : ''}\n\n`;
+                    });
+                  });
+                } else {
+                  // Format for specific date query
+                  const dateDescription = queryParams.date || 'today';
+                  response = `Hello ${user.name}, here's your schedule for ${dateDescription}:\n\n`;
+                  
+                  for (const schedule of schedules) {
+                    // Format times properly
+                    let startTimeStr = schedule.startTimeString || 
+                      (schedule.startTime ? new Date(schedule.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+                    
+                    let endTimeStr = schedule.endTimeString || 
+                      (schedule.endTime ? new Date(schedule.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+                    
+                    response += `- ${schedule.title}\n`;
+                    response += `  Time: ${startTimeStr} - ${endTimeStr}\n`;
+                    response += `  Location: ${schedule.location ? schedule.location.name : 'Unknown'}${schedule.location && schedule.location.address ? ', ' + schedule.location.address : ''}${schedule.location && schedule.location.city ? ', ' + schedule.location.city : ''}\n\n`;
+                  }
                 }
               }
             } else if (intent === 'schedule_query' && (
@@ -246,29 +423,82 @@ router.post('/webhook', async (req, res) => {
                 }
               }
             } else if (intent === 'traffic_query') {
-              // Get today's schedules to check for locations
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
+              // Use query parameters from AI to determine location and time
+              const queryParams = conversation.context.queryParams || {};
+              let location = null;
+              let schedule = null;
               
-              const tomorrow = new Date(today);
-              tomorrow.setDate(tomorrow.getDate() + 1);
+              // Check if we have a specific location in query parameters
+              if (queryParams.location_id) {
+                try {
+                  const Location = require('../../models/Location');
+                  location = await Location.findById(queryParams.location_id);
+                } catch (err) {
+                  console.error('Error finding location by ID:', err.message);
+                }
+              }
               
-              const schedules = await Schedule.find({
-                assignedEmployees: user._id,
-                date: { $gte: today, $lt: tomorrow }
-              }).populate('location');
+              // If no location found in query params, check for schedule with location
+              if (!location) {
+                // Determine date to check for schedules
+                let queryDate = new Date();
+                if (queryParams.date) {
+                  const dateParam = queryParams.date.toLowerCase();
+                  
+                  if (dateParam === 'tomorrow') {
+                    queryDate.setDate(queryDate.getDate() + 1);
+                  } else if (dateParam !== 'today') {
+                    // Try to parse as a specific date
+                    try {
+                      const specificDate = new Date(dateParam);
+                      if (!isNaN(specificDate.getTime())) {
+                        queryDate = specificDate;
+                      }
+                    } catch (e) {
+                      // Invalid date format, use today (already set)
+                    }
+                  }
+                }
+                
+                // Set up date range for the query
+                queryDate.setHours(0, 0, 0, 0);
+                const nextDay = new Date(queryDate);
+                nextDay.setDate(queryDate.getDate() + 1);
+                
+                // Find schedules for the determined date
+                const schedules = await Schedule.find({
+                  assignedEmployees: user._id,
+                  date: { $gte: queryDate, $lt: nextDay }
+                }).populate('location');
+                
+                if (schedules.length > 0) {
+                  // Use the first schedule with a valid location
+                  for (const s of schedules) {
+                    if (s.location && s.location.coordinates) {
+                      schedule = s;
+                      location = s.location;
+                      break;
+                    }
+                  }
+                }
+              }
               
-              if (schedules.length === 0) {
-                response = `You don't have any schedules for today, so I don't have location information to provide traffic updates.`;
+              // If we still don't have a location, check conversation context
+              if (!location && conversation.context.currentLocation) {
+                location = conversation.context.currentLocation;
+              }
+              
+              // If we still don't have a location, inform the user
+              if (!location) {
+                const dateDescription = queryParams.date || 'today';
+                response = `I don't have location information to provide traffic updates for ${dateDescription}. Please specify a location or ask about a day when you have a scheduled appointment.`;
               } else {
                 try {
-                  // Use the mapsService to get real traffic data
-                  const { getTrafficData, getRouteInfo } = require('../../utils/mapsService');
-                  const schedule = schedules[0];
-                  const location = schedule.location;
-                  
                   // Store location in conversation context for future reference
                   conversation.context.currentLocation = location;
+                  
+                  // Use the mapsService to get real traffic data
+                  const { getTrafficData, getRouteInfo } = require('../../utils/mapsService');
                   
                   // Get traffic data for the location
                   const trafficData = await getTrafficData(location.coordinates);
@@ -281,7 +511,10 @@ router.post('/webhook', async (req, res) => {
                   const travelTime = trafficData.flowSegmentData.currentTravelTime;
                   
                   // Generate response
-                  response = `Traffic update for your commute to ${location.name} (${location.address}, ${location.city}):\n\n`;
+                  const dateDescription = queryParams.date || 'today';
+                  const scheduleInfo = schedule ? ` for your ${schedule.title} appointment` : '';
+                  
+                  response = `Traffic update${scheduleInfo} to ${location.name} (${location.address}, ${location.city}) for ${dateDescription}:\n\n`;
                   response += `Current conditions: ${trafficDescription}\n`;
                   response += `Current speed: ${currentSpeed} km/h\n`;
                   response += `Estimated travel time: ${travelTime} minutes\n\n`;
@@ -297,86 +530,111 @@ router.post('/webhook', async (req, res) => {
                   console.error('Traffic data error:', trafficErr.message);
                   
                   // Fallback to basic response if traffic service fails
-                  const location = schedules[0].location;
                   response = `Traffic update for your commute to ${location.name} (${location.address}, ${location.city}):\n\n`;
                   response += `I'm having trouble getting real-time traffic data right now.\n`;
                   response += `Please check a traffic app for the most current conditions.`;
                 }
               }
             } else if (intent === 'route_query') {
-              // Handle route options requests
-              try {
-                // Check if we have location context from previous interactions
-                const currentLocation = conversation.context.currentLocation;
-                
-                if (!currentLocation) {
-                  // If no location context, check today's schedule
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
+              // Use query parameters from AI to determine location and origin
+              const queryParams = conversation.context.queryParams || {};
+              let location = null;
+              let schedule = null;
+              let origin = null;
+              
+              // Check if we have origin coordinates in query parameters
+              if (queryParams.origin_coordinates) {
+                origin = queryParams.origin_coordinates;
+              }
+              
+              // Check if we have a specific location in query parameters
+              if (queryParams.location_id) {
+                try {
+                  const Location = require('../../models/Location');
+                  location = await Location.findById(queryParams.location_id);
+                } catch (err) {
+                  console.error('Error finding location by ID:', err.message);
+                }
+              }
+              
+              // If no location found in query params, check for schedule with location
+              if (!location) {
+                // Determine date to check for schedules
+                let queryDate = new Date();
+                if (queryParams.date) {
+                  const dateParam = queryParams.date.toLowerCase();
                   
-                  const tomorrow = new Date(today);
-                  tomorrow.setDate(tomorrow.getDate() + 1);
-                  
-                  const schedules = await Schedule.find({
-                    assignedEmployees: user._id,
-                    date: { $gte: today, $lt: tomorrow }
-                  }).populate('location');
-                  
-                  if (schedules.length === 0) {
-                    response = `I don't have your destination information. Please ask about your schedule first or specify where you're going.`;
-                  } else {
-                    const location = schedules[0].location;
-                    
-                    // Use mapsService to get route options
-                    const { getRouteInfo } = require('../../utils/mapsService');
-                    
-                    // Use a default origin for demo purposes
-                    // In a real app, you might ask the user for their current location
-                    const defaultOrigin = {
-                      latitude: location.coordinates.latitude - 0.05,
-                      longitude: location.coordinates.longitude - 0.05
-                    };
-                    
-                    const routeData = await getRouteInfo(defaultOrigin, location.coordinates);
-                    
-                    response = `Route options to ${location.name} (${location.address}):\n\n`;
-                    
-                    // Format route options
-                    routeData.routes.forEach((route, index) => {
-                      const travelTimeMinutes = Math.round(route.summary.travelTimeInSeconds / 60);
-                      const distanceKm = Math.round(route.summary.lengthInMeters / 100) / 10;
-                      const trafficDelay = Math.round(route.summary.trafficDelayInSeconds / 60);
-                      
-                      response += `Option ${index + 1}:\n`;
-                      response += `Distance: ${distanceKm} km\n`;
-                      response += `Travel time: ${travelTimeMinutes} minutes`;
-                      
-                      if (trafficDelay > 0) {
-                        response += ` (includes ${trafficDelay} min delay due to traffic)`;
+                  if (dateParam === 'tomorrow') {
+                    queryDate.setDate(queryDate.getDate() + 1);
+                  } else if (dateParam !== 'today') {
+                    // Try to parse as a specific date
+                    try {
+                      const specificDate = new Date(dateParam);
+                      if (!isNaN(specificDate.getTime())) {
+                        queryDate = specificDate;
                       }
-                      
-                      response += `\n\n`;
-                    });
-                    
-                    // Store route data in conversation context
-                    conversation.context.routeData = routeData;
+                    } catch (e) {
+                      // Invalid date format, use today (already set)
+                    }
                   }
-                } else {
-                  // Use location from context
-                  const location = currentLocation;
+                }
+                
+                // Set up date range for the query
+                queryDate.setHours(0, 0, 0, 0);
+                const nextDay = new Date(queryDate);
+                nextDay.setDate(queryDate.getDate() + 1);
+                
+                // Find schedules for the determined date
+                const schedules = await Schedule.find({
+                  assignedEmployees: user._id,
+                  date: { $gte: queryDate, $lt: nextDay }
+                }).populate('location');
+                
+                if (schedules.length > 0) {
+                  // Use the first schedule with a valid location
+                  for (const s of schedules) {
+                    if (s.location && s.location.coordinates) {
+                      schedule = s;
+                      location = s.location;
+                      break;
+                    }
+                  }
+                }
+              }
+              
+              // If we still don't have a location, check conversation context
+              if (!location && conversation.context.currentLocation) {
+                location = conversation.context.currentLocation;
+              }
+              
+              // If we still don't have a location, inform the user
+              if (!location) {
+                const dateDescription = queryParams.date || 'today';
+                response = `I don't have destination information to provide route options for ${dateDescription}. Please specify a location or ask about a day when you have a scheduled appointment.`;
+              } else {
+                try {
+                  // Store location in conversation context for future reference
+                  conversation.context.currentLocation = location;
                   
                   // Use mapsService to get route options
                   const { getRouteInfo } = require('../../utils/mapsService');
                   
-                  // Use a default origin for demo purposes
-                  const defaultOrigin = {
-                    latitude: location.coordinates.latitude - 0.05,
-                    longitude: location.coordinates.longitude - 0.05
-                  };
+                  // If no origin provided, use a default origin for demo purposes
+                  // In a real app, you might ask the user for their current location
+                  if (!origin) {
+                    origin = {
+                      latitude: location.coordinates.latitude - 0.05,
+                      longitude: location.coordinates.longitude - 0.05
+                    };
+                  }
                   
-                  const routeData = await getRouteInfo(defaultOrigin, location.coordinates);
+                  const routeData = await getRouteInfo(origin, location.coordinates);
                   
-                  response = `Route options to ${location.name} (${location.address}):\n\n`;
+                  // Generate response
+                  const dateDescription = queryParams.date || 'today';
+                  const scheduleInfo = schedule ? ` for your ${schedule.title} appointment` : '';
+                  
+                  response = `Route options${scheduleInfo} to ${location.name} (${location.address}, ${location.city}) for ${dateDescription}:\n\n`;
                   
                   // Format route options
                   routeData.routes.forEach((route, index) => {
@@ -392,15 +650,38 @@ router.post('/webhook', async (req, res) => {
                       response += ` (includes ${trafficDelay} min delay due to traffic)`;
                     }
                     
+                    // Add route description if available
+                    if (route.guidance && route.guidance.instructions && route.guidance.instructions.length > 0) {
+                      response += `\n`;
+                      response += `Main directions: `;
+                      
+                      // Add first 2-3 major instructions
+                      const majorInstructions = route.guidance.instructions
+                        .filter(instruction => instruction.routeOffsetInMeters > 500)
+                        .slice(0, 3);
+                      
+                      majorInstructions.forEach((instruction, i) => {
+                        if (i > 0) response += ` → `;
+                        response += instruction.message;
+                      });
+                    }
+                    
                     response += `\n\n`;
                   });
                   
                   // Store route data in conversation context
                   conversation.context.routeData = routeData;
+                  
+                  // Add transportation mode options if available
+                  if (queryParams.transportation_mode) {
+                    response += `Note: These directions are optimized for ${queryParams.transportation_mode} travel.\n`;
+                  } else {
+                    response += `For alternative transportation options, you can ask about public transit, walking, or cycling routes.\n`;
+                  }
+                } catch (routeErr) {
+                  console.error('Route options error:', routeErr.message);
+                  response = `I'm having trouble getting route options right now. Please try again later.`;
                 }
-              } catch (routeErr) {
-                console.error('Route options error:', routeErr.message);
-                response = `I'm having trouble getting route options right now. Please try again later.`;
               }
             } else if (intent === 'admin_command') {
               // Check if user has admin role
@@ -413,79 +694,461 @@ router.post('/webhook', async (req, res) => {
                 response = await handleAdminCommand(command, user, phoneNumber);
               }
             } else if (intent === 'absence_request') {
-              // Handle absence requests with NLP
+              // Use query parameters from AI to determine absence details
+              const queryParams = conversation.context.queryParams || {};
+              
               try {
-                // Extract absence details from the message
+                // Extract absence details from query parameters or message
                 const Absence = require('../../models/Absence');
+                
+                // Determine absence type from query parameters
+                const absenceType = queryParams.absence_type || 'personal';
+                
+                // Validate absence type
+                const validTypes = ['personal', 'sick', 'vacation', 'family', 'other'];
+                const normalizedType = absenceType.toLowerCase();
+                const finalType = validTypes.includes(normalizedType) ? normalizedType : 'personal';
                 
                 // Create a new absence request
                 const absence = new Absence({
                   user: user._id,
+                  type: finalType,
                   status: 'pending',
                   requestedVia: 'whatsapp',
                   notes: messageContent
                 });
                 
-                // Try to extract dates from the message using a simple regex
-                const dateRegex = /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/g;
-                const dates = messageContent.match(dateRegex);
-                
-                // Extract reason from the message using NLP patterns
-                let reason = messageContent;
-                
-                // Look for reason indicators in the message
-                const reasonIndicators = [
-                  'because', 'due to', 'reason is', 'reason:', 'for', 'as I', 'since'
-                ];
-                
-                // Try to extract a more specific reason if indicators are present
-                for (const indicator of reasonIndicators) {
-                  if (messageContent.toLowerCase().includes(indicator)) {
-                    const parts = messageContent.split(new RegExp(`${indicator}\s+`, 'i'));
-                    if (parts.length > 1) {
-                      // Take the part after the indicator as the reason
-                      reason = parts[1].trim();
-                      break;
+                // Determine start date from query parameters or message
+                let startDate;
+                if (queryParams.start_date) {
+                  // Try to parse the start date from query parameters
+                  try {
+                    startDate = new Date(queryParams.start_date);
+                    if (isNaN(startDate.getTime())) {
+                      // Invalid date format, try to handle special cases
+                      if (queryParams.start_date.toLowerCase() === 'today') {
+                        startDate = new Date();
+                      } else if (queryParams.start_date.toLowerCase() === 'tomorrow') {
+                        startDate = new Date();
+                        startDate.setDate(startDate.getDate() + 1);
+                      } else {
+                        // Default to today if we can't parse the date
+                        startDate = new Date();
+                      }
                     }
+                  } catch (e) {
+                    startDate = new Date(); // Default to today on error
+                  }
+                } else {
+                  // Try to extract dates from the message using regex as fallback
+                  const dateRegex = /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/g;
+                  const dates = messageContent.match(dateRegex);
+                  
+                  if (dates && dates.length > 0) {
+                    try {
+                      startDate = new Date(dates[0]);
+                      if (isNaN(startDate.getTime())) {
+                        startDate = new Date(); // Default to today if invalid
+                      }
+                    } catch (e) {
+                      startDate = new Date(); // Default to today on error
+                    }
+                  } else {
+                    startDate = new Date(); // Default to today if no dates found
                   }
                 }
                 
-                if (dates && dates.length > 0) {
-                  // If we found dates, use them for start and end dates
-                  absence.startDate = new Date(dates[0]);
-                  absence.endDate = dates.length > 1 ? new Date(dates[1]) : new Date(dates[0]);
-                  absence.reason = reason;
+                // Determine end date from query parameters or message
+                let endDate;
+                if (queryParams.end_date) {
+                  // Try to parse the end date from query parameters
+                  try {
+                    endDate = new Date(queryParams.end_date);
+                    if (isNaN(endDate.getTime())) {
+                      endDate = startDate; // Default to start date if invalid
+                    }
+                  } catch (e) {
+                    endDate = startDate; // Default to start date on error
+                  }
+                } else if (queryParams.duration) {
+                  // Calculate end date based on duration (in days)
+                  try {
+                    const duration = parseInt(queryParams.duration);
+                    if (!isNaN(duration) && duration > 0) {
+                      endDate = new Date(startDate);
+                      endDate.setDate(startDate.getDate() + duration - 1); // -1 because start day counts as day 1
+                    } else {
+                      endDate = startDate; // Default to start date if invalid duration
+                    }
+                  } catch (e) {
+                    endDate = startDate; // Default to start date on error
+                  }
                 } else {
-                  // Default to today if no dates found
-                  const today = new Date();
-                  absence.startDate = today;
-                  absence.endDate = today;
-                  absence.reason = reason;
+                  // Try to extract end date from message as fallback
+                  const dateRegex = /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/g;
+                  const dates = messageContent.match(dateRegex);
+                  
+                  if (dates && dates.length > 1) {
+                    try {
+                      endDate = new Date(dates[1]);
+                      if (isNaN(endDate.getTime())) {
+                        endDate = startDate; // Default to start date if invalid
+                      }
+                    } catch (e) {
+                      endDate = startDate; // Default to start date on error
+                    }
+                  } else {
+                    endDate = startDate; // Default to start date if no end date found
+                  }
                 }
+                
+                // Ensure end date is not before start date
+                if (endDate < startDate) {
+                  endDate = startDate;
+                }
+                
+                // Set the dates in the absence object
+                absence.startDate = startDate;
+                absence.endDate = endDate;
+                
+                // Determine reason from query parameters or message
+                let reason = queryParams.reason;
+                
+                if (!reason) {
+                  // Extract reason from message as fallback
+                  // Look for reason indicators in the message
+                  const reasonIndicators = [
+                    'because', 'due to', 'reason is', 'reason:', 'for', 'as I', 'since'
+                  ];
+                  
+                  // Try to extract a more specific reason if indicators are present
+                  for (const indicator of reasonIndicators) {
+                    if (messageContent.toLowerCase().includes(indicator)) {
+                      const parts = messageContent.split(new RegExp(`${indicator}\s+`, 'i'));
+                      if (parts.length > 1) {
+                        // Take the part after the indicator as the reason
+                        reason = parts[1].trim();
+                        break;
+                      }
+                    }
+                  }
+                  
+                  // If no reason found, use the whole message or a default
+                  if (!reason) {
+                    reason = messageContent.length > 20 ? messageContent : "No specific reason provided";
+                  }
+                }
+                
+                absence.reason = reason;
                 
                 // Save the absence request
                 await absence.save();
                 
+                // Format dates for response and notifications
+                const startDateStr = startDate.toLocaleDateString();
+                const endDateStr = endDate.toLocaleDateString();
+                
+                // Calculate duration for response
+                const durationMs = endDate.getTime() - startDate.getTime();
+                const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24)) + 1; // +1 because both start and end dates are inclusive
+                
                 // Notify admin about the new absence request
                 const admins = await User.find({ role: 'admin' });
                 for (const admin of admins) {
-                  if (admin.phone) {
-                    await sendWhatsAppMessage(
-                      admin.phone,
-                      `New absence request from ${user.name} (${user.department || 'N/A'}):\n\n` +
-                      `Dates: ${absence.startDate.toLocaleDateString()} to ${absence.endDate.toLocaleDateString()}\n` +
-                      `Reason: ${absence.reason || absence.notes}\n\n` +
-                      `Reply to this message to approve or deny.`
-                    );
+                  if (admin.whatsappId || admin.phone) {
+                    const recipientId = admin.whatsappId || admin.phone;
+                    const adminNotification = `New ${finalType} absence request from ${user.name} (${user.department || 'N/A'}):\n\n` +
+                      `Dates: ${startDateStr}${startDateStr !== endDateStr ? ` to ${endDateStr}` : ''} (${durationDays} day${durationDays !== 1 ? 's' : ''})\n` +
+                      `Reason: ${reason}\n\n` +
+                      `Reply to this message to approve or deny.`;
+                    
+                    try {
+                      await sendWhatsAppMessage(recipientId, adminNotification);
+                    } catch (notifyError) {
+                      console.error('Error notifying admin about new absence request:', notifyError.message);
+                      // Continue execution even if notification fails
+                    }
                   }
                 }
                 
-                response = `Thank you for your absence request. Your request has been submitted and is pending approval. ` +
-                          `You will be notified once it has been processed.`;
+                // Respond to the user
+                if (startDateStr === endDateStr) {
+                  response = `Thank you! Your ${finalType} absence request for ${startDateStr} has been submitted and is pending approval. ` +
+                            `You will be notified once it has been processed.`;
+                } else {
+                  response = `Thank you! Your ${finalType} absence request from ${startDateStr} to ${endDateStr} (${durationDays} day${durationDays !== 1 ? 's' : ''}) ` +
+                            `has been submitted and is pending approval. You will be notified once it has been processed.`;
+                }
               } catch (absenceErr) {
                 console.error('Absence request error:', absenceErr.message);
                 response = `I'm sorry, I couldn't process your absence request. Please try again with a clearer message ` +
                           `or contact your administrator directly.`;
+              }
+            } else if (intent === 'employee_query') {
+              // Use query parameters from AI to determine query type and filters
+              const queryParams = conversation.context.queryParams || {};
+              
+              // Determine query type from parameters or message content
+              const queryType = queryParams.query_type || 'unknown';
+              
+              // Determine if this is a working or absence query
+              const isWorkingQuery = (
+                queryType === 'working' ||
+                messageContent.toLowerCase().includes('working today') ||
+                messageContent.toLowerCase().includes('on duty') ||
+                messageContent.toLowerCase().includes('on shift') ||
+                messageContent.toLowerCase().includes('who is working') ||
+                messageContent.toLowerCase().includes('employees today')
+              );
+              
+              const isAbsenceQuery = (
+                queryType === 'absent' ||
+                messageContent.toLowerCase().includes('absent') ||
+                messageContent.toLowerCase().includes('not working') ||
+                messageContent.toLowerCase().includes('off today') ||
+                messageContent.toLowerCase().includes('on leave') ||
+                messageContent.toLowerCase().includes('sick')
+              );
+              
+              // Determine date to query
+              let queryDate = new Date();
+              if (queryParams.date) {
+                const dateParam = queryParams.date.toLowerCase();
+                
+                if (dateParam === 'tomorrow') {
+                  queryDate.setDate(queryDate.getDate() + 1);
+                } else if (dateParam !== 'today') {
+                  // Try to parse as a specific date
+                  try {
+                    const specificDate = new Date(dateParam);
+                    if (!isNaN(specificDate.getTime())) {
+                      queryDate = specificDate;
+                    }
+                  } catch (e) {
+                    // Invalid date format, use today (already set)
+                  }
+                }
+              }
+              
+              // Set up date range for the query
+              queryDate.setHours(0, 0, 0, 0);
+              const nextDay = new Date(queryDate);
+              nextDay.setDate(queryDate.getDate() + 1);
+              
+              // Format date for response
+              const dateDescription = queryParams.date || 'today';
+              const formattedDate = queryDate.toLocaleDateString(undefined, { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric' 
+              });
+              
+              // Department filter if specified
+              const departmentFilter = queryParams.department || null;
+              
+              if (isWorkingQuery) {
+                // Find schedules for the specified date
+                const scheduleQuery = {
+                  date: { $gte: queryDate, $lt: nextDay },
+                  status: { $ne: 'cancelled' }
+                };
+                
+                // Add location filter if specified
+                if (queryParams.location_id) {
+                  scheduleQuery.location = queryParams.location_id;
+                }
+                
+                const schedules = await Schedule.find(scheduleQuery)
+                  .populate('assignedEmployees', 'name department position')
+                  .populate('location', 'name');
+                
+                if (schedules.length === 0) {
+                  response = `There are no employees scheduled to work for ${dateDescription}.`;
+                } else {
+                  // Extract unique employees from all schedules
+                  const workingEmployees = new Map();
+                  
+                  schedules.forEach(schedule => {
+                    if (schedule.assignedEmployees && schedule.assignedEmployees.length > 0) {
+                      schedule.assignedEmployees.forEach(employee => {
+                        // Apply department filter if specified
+                        if (departmentFilter && 
+                            employee.department && 
+                            !employee.department.toLowerCase().includes(departmentFilter.toLowerCase())) {
+                          return; // Skip this employee
+                        }
+                        
+                        // Use employee ID as key to avoid duplicates
+                        if (!workingEmployees.has(employee._id.toString())) {
+                          workingEmployees.set(employee._id.toString(), {
+                            name: employee.name,
+                            department: employee.department || 'N/A',
+                            position: employee.position || 'N/A',
+                            schedule: schedule.title,
+                            location: schedule.location ? schedule.location.name : 'Unknown'
+                          });
+                        }
+                      });
+                    }
+                  });
+                  
+                  if (workingEmployees.size === 0) {
+                    if (departmentFilter) {
+                      response = `There are no employees from the ${departmentFilter} department scheduled to work for ${dateDescription}.`;
+                    } else {
+                      response = `There are no employees assigned to schedules for ${dateDescription}.`;
+                    }
+                  } else {
+                    // Group employees by department for better readability
+                    const employeesByDept = {};
+                    
+                    workingEmployees.forEach(employee => {
+                      if (!employeesByDept[employee.department]) {
+                        employeesByDept[employee.department] = [];
+                      }
+                      employeesByDept[employee.department].push(employee);
+                    });
+                    
+                    // Build response
+                    if (departmentFilter) {
+                      response = `*${departmentFilter} Department Employees Working on ${formattedDate} (${workingEmployees.size} total)*\n\n`;
+                    } else {
+                      response = `*Employees Working on ${formattedDate} (${workingEmployees.size} total)*\n\n`;
+                    }
+                    
+                    Object.keys(employeesByDept).forEach(dept => {
+                      response += `*${dept}*\n`;
+                      
+                      employeesByDept[dept].forEach((employee, index) => {
+                        response += `${index + 1}. ${employee.name}`;
+                        if (employee.position !== 'N/A') {
+                          response += ` (${employee.position})`;
+                        }
+                        response += `\n   Schedule: ${employee.schedule}`;
+                        response += `\n   Location: ${employee.location}\n`;
+                      });
+                      
+                      response += `\n`;
+                    });
+                  }
+                }
+              } else if (isAbsenceQuery) {
+                // Find absences for the specified date
+                const Absence = require('../../models/Absence');
+                const absenceQuery = {
+                  startDate: { $lte: nextDay },
+                  endDate: { $gte: queryDate },
+                  status: 'approved'
+                };
+                
+                const absences = await Absence.find(absenceQuery)
+                  .populate('user', 'name department position');
+                
+                // Filter by department if specified
+                const filteredAbsences = departmentFilter 
+                  ? absences.filter(absence => 
+                      absence.user.department && 
+                      absence.user.department.toLowerCase().includes(departmentFilter.toLowerCase()))
+                  : absences;
+                
+                if (filteredAbsences.length === 0) {
+                  if (departmentFilter) {
+                    response = `There are no approved absences from the ${departmentFilter} department for ${dateDescription}.`;
+                  } else {
+                    response = `There are no approved absences for ${dateDescription}.`;
+                  }
+                } else {
+                  // Group absences by type for better readability
+                  const absencesByType = {};
+                  
+                  filteredAbsences.forEach(absence => {
+                    const type = absence.type || 'other';
+                    
+                    if (!absencesByType[type]) {
+                      absencesByType[type] = [];
+                    }
+                    
+                    absencesByType[type].push({
+                      name: absence.user.name,
+                      department: absence.user.department || 'N/A',
+                      position: absence.user.position || 'N/A',
+                      reason: absence.reason,
+                      startDate: new Date(absence.startDate).toLocaleDateString(),
+                      endDate: new Date(absence.endDate).toLocaleDateString()
+                    });
+                  });
+                  
+                  // Build response
+                  if (departmentFilter) {
+                    response = `*${departmentFilter} Department Employees Absent on ${formattedDate} (${filteredAbsences.length} total)*\n\n`;
+                  } else {
+                    response = `*Employees Absent on ${formattedDate} (${filteredAbsences.length} total)*\n\n`;
+                  }
+                  
+                  Object.keys(absencesByType).forEach(type => {
+                    response += `*${type.charAt(0).toUpperCase() + type.slice(1)} Leave*\n`;
+                    
+                    absencesByType[type].forEach((absence, index) => {
+                      response += `${index + 1}. ${absence.name}`;
+                      if (absence.department !== 'N/A') {
+                        response += ` (${absence.department})`;
+                      }
+                      response += `\n   Period: ${absence.startDate}`;
+                      
+                      if (absence.startDate !== absence.endDate) {
+                        response += ` to ${absence.endDate}`;
+                      }
+                      
+                      if (absence.reason) {
+                        response += `\n   Reason: ${absence.reason}`;
+                      }
+                      
+                      response += `\n\n`;
+                    });
+                  });
+                }
+              } else {
+                // General employee query - provide summary of both working and absent
+                // Define today and tomorrow for date range queries
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                
+                const todaySchedules = await Schedule.find({
+                  date: { $gte: today, $lt: tomorrow },
+                  status: { $ne: 'cancelled' }
+                }).populate('assignedEmployees', 'name');
+                
+                const Absence = require('../../models/Absence');
+                const todayAbsences = await Absence.find({
+                  startDate: { $lte: tomorrow },
+                  endDate: { $gte: today },
+                  status: 'approved'
+                }).populate('user', 'name');
+                
+                // Count unique employees working today
+                const workingEmployees = new Set();
+                todaySchedules.forEach(schedule => {
+                  if (schedule.assignedEmployees && schedule.assignedEmployees.length > 0) {
+                    schedule.assignedEmployees.forEach(employee => {
+                      workingEmployees.add(employee._id.toString());
+                    });
+                  }
+                });
+                
+                // Count employees absent today
+                const absentEmployees = new Set();
+                todayAbsences.forEach(absence => {
+                  absentEmployees.add(absence.user._id.toString());
+                });
+                
+                response = `*Employee Status Summary for Today*\n\n`;
+                response += `Employees working: ${workingEmployees.size}\n`;
+                response += `Employees absent: ${absentEmployees.size}\n\n`;
+                response += `For detailed information, ask:\n`;
+                response += `- "Who is working today?"\n`;
+                response += `- "Who is absent today?"\n`;
               }
             } else if (intent === 'general_question') {
               // For general questions, use Azure OpenAI to generate a response
@@ -791,74 +1454,151 @@ You can use natural language - the system will understand your intent!`;
         return userList;
       
       case 'schedules':
-        // Process natural language date references in the command
-        let targetDate = new Date();
-        targetDate.setHours(0, 0, 0, 0);
+        // Check if admin is requesting all schedules regardless of date
+        const requestingAllSchedules = (
+          commandLower.includes('all schedules') ||
+          commandLower.includes('all the schedules') ||
+          commandLower.includes('every schedule') ||
+          commandLower.includes('irrespective of date') ||
+          commandLower.includes('regardless of date') ||
+          (commandLower.includes('all') && !commandLower.includes('today') && 
+           !commandLower.includes('tomorrow') && !commandLower.includes('yesterday') && 
+           !commandLower.includes('next'))
+        );
         
-        // Check for date references in the command
-        if (commandLower.includes('tomorrow')) {
-          targetDate.setDate(targetDate.getDate() + 1);
-        } else if (commandLower.includes('yesterday')) {
-          targetDate.setDate(targetDate.getDate() - 1);
-        } else if (commandLower.match(/next (mon|tues|wednes|thurs|fri|satur|sun)day/i)) {
-          // Handle next weekday references
-          const dayMatch = commandLower.match(/next (mon|tues|wednes|thurs|fri|satur|sun)day/i);
-          if (dayMatch) {
-            const dayPrefix = dayMatch[1].toLowerCase();
-            let targetDay;
-            
-            switch (dayPrefix) {
-              case 'mon': targetDay = 1; break;
-              case 'tues': targetDay = 2; break;
-              case 'wednes': targetDay = 3; break;
-              case 'thurs': targetDay = 4; break;
-              case 'fri': targetDay = 5; break;
-              case 'satur': targetDay = 6; break;
-              case 'sun': targetDay = 0; break;
-              default: targetDay = null;
-            }
-            
-            if (targetDay !== null) {
-              // Calculate days to add
-              const currentDay = targetDate.getDay();
-              let daysToAdd = targetDay - currentDay;
-              if (daysToAdd <= 0) daysToAdd += 7; // Ensure we're getting next week's day
-              
-              targetDate.setDate(targetDate.getDate() + daysToAdd);
-            }
+        let schedules;
+        let scheduleList = '';
+        
+        if (requestingAllSchedules) {
+          // Fetch all schedules without date filtering
+          schedules = await Schedule.find({})
+            .populate('location assignedEmployees', 'name address city')
+            .sort({ date: 1 }); // Sort by date ascending
+          
+          if (schedules.length === 0) {
+            return 'No schedules found in the system.';
           }
-        } else if (commandLower.includes('next week')) {
-          // Set to next Monday
-          const currentDay = targetDate.getDay();
-          const daysToAdd = currentDay === 1 ? 7 : (8 - currentDay) % 7;
-          targetDate.setDate(targetDate.getDate() + daysToAdd);
+          
+          scheduleList = `*All Schedules (${schedules.length} total)*\n\n`;
+          
+          // Group schedules by date for better readability
+          const schedulesByDate = {};
+          
+          schedules.forEach(schedule => {
+            const scheduleDate = new Date(schedule.date);
+            const dateStr = scheduleDate.toLocaleDateString(undefined, { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            });
+            
+            if (!schedulesByDate[dateStr]) {
+              schedulesByDate[dateStr] = [];
+            }
+            
+            schedulesByDate[dateStr].push(schedule);
+          });
+          
+          // Format output by date groups
+          Object.keys(schedulesByDate).forEach(dateStr => {
+            scheduleList += `*${dateStr}*\n`;
+            
+            schedulesByDate[dateStr].forEach((schedule, index) => {
+              // Format times properly
+              let startTimeStr = schedule.startTimeString || 
+                (schedule.startTime ? new Date(schedule.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+              
+              let endTimeStr = schedule.endTimeString || 
+                (schedule.endTime ? new Date(schedule.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+              
+              scheduleList += `${index + 1}. ${schedule.title}\n`;
+              scheduleList += `   Time: ${startTimeStr} - ${endTimeStr}\n`;
+              scheduleList += `   Location: ${schedule.location ? schedule.location.name : 'Unknown'}\n`;
+              scheduleList += `   Employees: ${schedule.assignedEmployees && schedule.assignedEmployees.length > 0 ? 
+                schedule.assignedEmployees.map(e => e.name).join(', ') : 'None assigned'}\n\n`;
+            });
+          });
+          
+          return scheduleList;
+        } else {
+          // Process natural language date references in the command
+          let targetDate = new Date();
+          targetDate.setHours(0, 0, 0, 0);
+          
+          // Check for date references in the command
+          if (commandLower.includes('tomorrow')) {
+            targetDate.setDate(targetDate.getDate() + 1);
+          } else if (commandLower.includes('yesterday')) {
+            targetDate.setDate(targetDate.getDate() - 1);
+          } else if (commandLower.match(/next (mon|tues|wednes|thurs|fri|satur|sun)day/i)) {
+            // Handle next weekday references
+            const dayMatch = commandLower.match(/next (mon|tues|wednes|thurs|fri|satur|sun)day/i);
+            if (dayMatch) {
+              const dayPrefix = dayMatch[1].toLowerCase();
+              let targetDay;
+              
+              switch (dayPrefix) {
+                case 'mon': targetDay = 1; break;
+                case 'tues': targetDay = 2; break;
+                case 'wednes': targetDay = 3; break;
+                case 'thurs': targetDay = 4; break;
+                case 'fri': targetDay = 5; break;
+                case 'satur': targetDay = 6; break;
+                case 'sun': targetDay = 0; break;
+                default: targetDay = null;
+              }
+              
+              if (targetDay !== null) {
+                // Calculate days to add
+                const currentDay = targetDate.getDay();
+                let daysToAdd = targetDay - currentDay;
+                if (daysToAdd <= 0) daysToAdd += 7; // Ensure we're getting next week's day
+                
+                targetDate.setDate(targetDate.getDate() + daysToAdd);
+              }
+            }
+          } else if (commandLower.includes('next week')) {
+            // Set to next Monday
+            const currentDay = targetDate.getDay();
+            const daysToAdd = currentDay === 1 ? 7 : (8 - currentDay) % 7;
+            targetDate.setDate(targetDate.getDate() + daysToAdd);
+          }
+          
+          // Get the next day for date range
+          const nextDay = new Date(targetDate);
+          nextDay.setDate(nextDay.getDate() + 1);
+          
+          // Find schedules for the target date
+          schedules = await Schedule.find({
+            date: { $gte: targetDate, $lt: nextDay }
+          }).populate('location assignedEmployees', 'name address city');
+          
+          // Format the date for display
+          const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+          const formattedDate = targetDate.toLocaleDateString(undefined, dateOptions);
+          
+          if (schedules.length === 0) {
+            return `No schedules found for ${formattedDate}.`;
+          }
+          
+          scheduleList = `*Schedules for ${formattedDate}*\n\n`;
+          
+          schedules.forEach((schedule, index) => {
+            // Format times properly
+            let startTimeStr = schedule.startTimeString || 
+              (schedule.startTime ? new Date(schedule.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+            
+            let endTimeStr = schedule.endTimeString || 
+              (schedule.endTime ? new Date(schedule.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A');
+            
+            scheduleList += `${index + 1}. ${schedule.title}\n`;
+            scheduleList += `   Time: ${startTimeStr} - ${endTimeStr}\n`;
+            scheduleList += `   Location: ${schedule.location ? schedule.location.name : 'Unknown'}\n`;
+            scheduleList += `   Employees: ${schedule.assignedEmployees && schedule.assignedEmployees.length > 0 ? 
+              schedule.assignedEmployees.map(e => e.name).join(', ') : 'None assigned'}\n\n`;
+          });
         }
-        
-        // Get the next day for date range
-        const nextDay = new Date(targetDate);
-        nextDay.setDate(nextDay.getDate() + 1);
-        
-        // Find schedules for the target date
-        const schedules = await Schedule.find({
-          date: { $gte: targetDate, $lt: nextDay }
-        }).populate('location assignedEmployees', 'name address city');
-        
-        // Format the date for display
-        const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        const formattedDate = targetDate.toLocaleDateString(undefined, dateOptions);
-        
-        if (schedules.length === 0) {
-          return `No schedules found for ${formattedDate}.`;
-        }
-        
-        let scheduleList = `*Schedules for ${formattedDate}*\n\n`;
-        
-        schedules.forEach((schedule, index) => {
-          scheduleList += `${index + 1}. ${schedule.title}\n`;
-          scheduleList += `   Time: ${schedule.startTime} - ${schedule.endTime}\n`;
-          scheduleList += `   Location: ${schedule.location.name}\n`;
-          scheduleList += `   Employees: ${schedule.assignedEmployees.map(e => e.name).join(', ')}\n\n`;
-        });
         
         return scheduleList;
       
@@ -894,8 +1634,13 @@ You can use natural language - the system will understand your intent!`;
         // Send message to all users with phone numbers
         for (const u of allUsers) {
           if (u.phone) {
-            await sendWhatsAppMessage(u.phone, `*BROADCAST MESSAGE FROM ADMIN*\n\n${broadcastMessage}`);
-            sentCount++;
+            try {
+              await sendWhatsAppMessage(u.phone, `*BROADCAST MESSAGE FROM ADMIN*\n\n${broadcastMessage}`);
+              sentCount++;
+            } catch (broadcastError) {
+              console.error(`Failed to send broadcast to ${u.phone}:`, broadcastError.message);
+              // Continue with other users even if one fails
+            }
           }
         }
         
@@ -1109,10 +1854,15 @@ You can use natural language - the system will understand your intent!`;
         
         // Notify user of approval
         if (absenceToApprove.user.phone) {
-          await sendWhatsAppMessage(
-            absenceToApprove.user.phone,
-            `Your absence request from ${new Date(absenceToApprove.startDate).toLocaleDateString()} to ${new Date(absenceToApprove.endDate).toLocaleDateString()} has been approved.`
-          );
+          try {
+            await sendWhatsAppMessage(
+              absenceToApprove.user.phone,
+              `Your absence request from ${new Date(absenceToApprove.startDate).toLocaleDateString()} to ${new Date(absenceToApprove.endDate).toLocaleDateString()} has been approved.`
+            );
+          } catch (notifyError) {
+            console.error('Error notifying user about approval:', notifyError.message);
+            // Continue execution even if notification fails
+          }
         }
         
         return `Absence request for ${absenceToApprove.user.name} has been approved.`;
@@ -1193,10 +1943,15 @@ You can use natural language - the system will understand your intent!`;
         
         // Notify user of rejection
         if (absenceToReject.user.phone) {
-          await sendWhatsAppMessage(
-            absenceToReject.user.phone,
-            `Your absence request from ${new Date(absenceToReject.startDate).toLocaleDateString()} to ${new Date(absenceToReject.endDate).toLocaleDateString()} has been rejected.`
-          );
+          try {
+            await sendWhatsAppMessage(
+              absenceToReject.user.phone,
+              `Your absence request from ${new Date(absenceToReject.startDate).toLocaleDateString()} to ${new Date(absenceToReject.endDate).toLocaleDateString()} has been rejected.`
+            );
+          } catch (notifyError) {
+            console.error('Error notifying user about rejection:', notifyError.message);
+            // Continue execution even if notification fails
+          }
         }
         
         return `Absence request for ${absenceToReject.user.name} has been rejected.`;

@@ -15,12 +15,21 @@ const ScheduleSchema = new Schema({
     required: true
   },
   startTime: {
-    type: String,
+    type: Date,
     required: true
   },
   endTime: {
-    type: String,
+    type: Date,
     required: true
+  },
+  // Keep string versions for backward compatibility
+  startTimeString: {
+    type: String,
+    required: false
+  },
+  endTimeString: {
+    type: String,
+    required: false
   },
   location: {
     type: Schema.Types.ObjectId,
