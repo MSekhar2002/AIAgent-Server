@@ -20,7 +20,8 @@ router.post('/', [auth, admin], async (req, res) => {
     role, 
     department, 
     position, 
-    notificationPreferences 
+    notificationPreferences,
+    defaultLocation 
   } = req.body;
 
   try {
@@ -40,6 +41,7 @@ router.post('/', [auth, admin], async (req, res) => {
       role: role || 'employee',
       department,
       position,
+      defaultLocation,
       notificationPreferences: notificationPreferences || {
         email: true,
         whatsapp: phone ? true : false
@@ -96,7 +98,7 @@ router.post('/', [auth, admin], async (req, res) => {
 // @desc    Register a user (Public registration - for demo purposes)
 // @access  Public
 router.post('/register', async (req, res) => {
-  const { name, email, password, phone } = req.body;
+  const { name, email, password, phone, defaultLocation } = req.body;
 
   try {
     // Check if user exists
@@ -112,6 +114,7 @@ router.post('/register', async (req, res) => {
       email,
       password,
       phone,
+      defaultLocation,
       role: 'employee', // Default role for public registration
       notificationPreferences: {
         email: true,
@@ -211,6 +214,7 @@ router.put('/:id', [auth, admin], async (req, res) => {
     department, 
     position, 
     notificationPreferences,
+    defaultLocation,
     password
   } = req.body;
 
@@ -230,6 +234,7 @@ router.put('/:id', [auth, admin], async (req, res) => {
     if (department) userFields.department = department;
     if (position) userFields.position = position;
     if (notificationPreferences) userFields.notificationPreferences = notificationPreferences;
+    if (defaultLocation) userFields.defaultLocation = defaultLocation;
     userFields.updatedAt = Date.now();
     
     // Update password if provided
@@ -278,6 +283,123 @@ router.delete('/:id', [auth, admin], async (req, res) => {
     console.error(err.message);
     if (err.kind === 'ObjectId') {
       return res.status(404).json({ msg: 'User not found' });
+    }
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   PUT api/users/profile
+// @desc    Update current user's profile
+// @access  Private
+router.put('/profile', auth, async (req, res) => {
+  const { 
+    name, 
+    email, 
+    phone, 
+    department, 
+    position, 
+    notificationPreferences 
+  } = req.body;
+
+  try {
+    let user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    
+    // Build user object
+    const userFields = {};
+    if (name) userFields.name = name;
+    if (email) userFields.email = email;
+    if (phone) userFields.phone = phone;
+    if (department) userFields.department = department;
+    if (position) userFields.position = position;
+    if (notificationPreferences) userFields.notificationPreferences = notificationPreferences;
+    userFields.updatedAt = Date.now();
+    
+    // Update user
+    user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: userFields },
+      { new: true }
+    ).select('-password');
+    
+    res.json(user);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   PUT api/users/password
+// @desc    Update current user's password
+// @access  Private
+router.put('/password', auth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  try {
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    
+    // Check current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    
+    if (!isMatch) {
+      return res.status(400).json({ msg: 'Current password is incorrect' });
+    }
+    
+    // Encrypt new password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    user.updatedAt = Date.now();
+    
+    await user.save();
+    
+    res.json({ msg: 'Password updated successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   PUT api/users/default-location
+// @desc    Update user's default location
+// @access  Private
+router.put('/default-location', auth, async (req, res) => {
+  const { locationId } = req.body;
+
+  try {
+    if (!locationId) {
+      return res.status(400).json({ msg: 'Location ID is required' });
+    }
+
+    let user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    
+    // Update default location
+    user = await User.findByIdAndUpdate(
+      req.user.id,
+      { 
+        $set: { 
+          defaultLocation: locationId,
+          updatedAt: Date.now()
+        } 
+      },
+      { new: true }
+    ).populate('defaultLocation').select('-password');
+    
+    res.json(user);
+  } catch (err) {
+    console.error(err.message);
+    if (err.kind === 'ObjectId') {
+      return res.status(400).json({ msg: 'Invalid location ID' });
     }
     res.status(500).send('Server Error');
   }

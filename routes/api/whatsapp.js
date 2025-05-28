@@ -86,7 +86,7 @@ router.post('/webhook', async (req, res) => {
               
               // Get media URL from Meta
               const client = createMetaClient();
-              const mediaResponse = await axios.get(
+               const mediaResponse = await axios.get(
                 `https://graph.facebook.com/v22.0/${mediaId}`,
                 {
                   headers: {
@@ -148,7 +148,7 @@ router.post('/webhook', async (req, res) => {
             originalAudio: isVoiceMessage ? message.audio.id : undefined
           });
           
-          // Update conversation context with user information
+          // Update conversation context with user information and message intent
           conversation.context = {
             ...conversation.context,
             userName: user.name,
@@ -160,17 +160,24 @@ router.post('/webhook', async (req, res) => {
           conversation.lastActivity = Date.now();
           await conversation.save();
           
-          // Process message with Azure OpenAI
+          // Classify message intent using Azure OpenAI
           let response;
+          let intent;
           
           try {
-            // Check for common schedule-related queries
-            if (
-              messageContent.toLowerCase().includes('where do i work') ||
-              messageContent.toLowerCase().includes('my schedule') ||
-              messageContent.toLowerCase().includes('when do i work') ||
-              messageContent.toLowerCase().includes('my shift')
-            ) {
+            // Import the intent classifier
+            const { classifyIntent } = require('../../utils/intentClassifier');
+            
+            // Classify the message intent
+            intent = await classifyIntent(messageContent);
+            console.log(`Classified intent: ${intent} for message: "${messageContent}"`);
+            
+            // Add the intent to the conversation context
+            conversation.context.lastIntent = intent;
+            await conversation.save(); 
+            
+            // Process based on intent
+            if (intent === 'schedule_query') {
               // Get today's date range
               const today = new Date();
               today.setHours(0, 0, 0, 0);
@@ -195,10 +202,10 @@ router.post('/webhook', async (req, res) => {
                   response += `  Location: ${schedule.location.name}, ${schedule.location.address}, ${schedule.location.city}\n\n`;
                 }
               }
-            } else if (
+            } else if (intent === 'schedule_query' && (
               messageContent.toLowerCase().includes('this week') ||
-              messageContent.toLowerCase().includes('upcoming schedule')
-            ) {
+              messageContent.toLowerCase().includes('upcoming')
+            )) {
               // Get this week's date range
               const today = new Date();
               const day = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
@@ -238,11 +245,7 @@ router.post('/webhook', async (req, res) => {
                   response += `  Location: ${schedule.location.name}, ${schedule.location.city}\n\n`;
                 }
               }
-            } else if (
-              messageContent.toLowerCase().includes('traffic') ||
-              messageContent.toLowerCase().includes('travel time') ||
-              messageContent.toLowerCase().includes('commute')
-            ) {
+            } else if (intent === 'traffic_query') {
               // Get today's schedules to check for locations
               const today = new Date();
               today.setHours(0, 0, 0, 0);
@@ -300,11 +303,7 @@ router.post('/webhook', async (req, res) => {
                   response += `Please check a traffic app for the most current conditions.`;
                 }
               }
-            } else if (
-              messageContent.toLowerCase().includes('route options') ||
-              messageContent.toLowerCase().includes('alternative route') ||
-              messageContent.toLowerCase().includes('best way to')
-            ) {
+            } else if (intent === 'route_query') {
               // Handle route options requests
               try {
                 // Check if we have location context from previous interactions
@@ -403,12 +402,102 @@ router.post('/webhook', async (req, res) => {
                 console.error('Route options error:', routeErr.message);
                 response = `I'm having trouble getting route options right now. Please try again later.`;
               }
-            } else if (user.role === 'admin' && messageContent.toLowerCase().startsWith('/admin')) {
-              // Handle admin commands
-              const command = messageContent.substring(7).trim();
-              response = await handleAdminCommand(command, user, phoneNumber);
+            } else if (intent === 'admin_command') {
+              // Check if user has admin role
+              if (user.role !== 'admin') {
+                // Non-admin users attempting admin actions
+                response = `Sorry, you don't have permission to perform administrative actions. This requires admin privileges.`;
+              } else {
+                // Handle admin commands using NLP without requiring /admin prefix
+                const command = messageContent.trim();
+                response = await handleAdminCommand(command, user, phoneNumber);
+              }
+            } else if (intent === 'absence_request') {
+              // Handle absence requests with NLP
+              try {
+                // Extract absence details from the message
+                const Absence = require('../../models/Absence');
+                
+                // Create a new absence request
+                const absence = new Absence({
+                  user: user._id,
+                  status: 'pending',
+                  requestedVia: 'whatsapp',
+                  notes: messageContent
+                });
+                
+                // Try to extract dates from the message using a simple regex
+                const dateRegex = /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/g;
+                const dates = messageContent.match(dateRegex);
+                
+                // Extract reason from the message using NLP patterns
+                let reason = messageContent;
+                
+                // Look for reason indicators in the message
+                const reasonIndicators = [
+                  'because', 'due to', 'reason is', 'reason:', 'for', 'as I', 'since'
+                ];
+                
+                // Try to extract a more specific reason if indicators are present
+                for (const indicator of reasonIndicators) {
+                  if (messageContent.toLowerCase().includes(indicator)) {
+                    const parts = messageContent.split(new RegExp(`${indicator}\s+`, 'i'));
+                    if (parts.length > 1) {
+                      // Take the part after the indicator as the reason
+                      reason = parts[1].trim();
+                      break;
+                    }
+                  }
+                }
+                
+                if (dates && dates.length > 0) {
+                  // If we found dates, use them for start and end dates
+                  absence.startDate = new Date(dates[0]);
+                  absence.endDate = dates.length > 1 ? new Date(dates[1]) : new Date(dates[0]);
+                  absence.reason = reason;
+                } else {
+                  // Default to today if no dates found
+                  const today = new Date();
+                  absence.startDate = today;
+                  absence.endDate = today;
+                  absence.reason = reason;
+                }
+                
+                // Save the absence request
+                await absence.save();
+                
+                // Notify admin about the new absence request
+                const admins = await User.find({ role: 'admin' });
+                for (const admin of admins) {
+                  if (admin.phone) {
+                    await sendWhatsAppMessage(
+                      admin.phone,
+                      `New absence request from ${user.name} (${user.department || 'N/A'}):\n\n` +
+                      `Dates: ${absence.startDate.toLocaleDateString()} to ${absence.endDate.toLocaleDateString()}\n` +
+                      `Reason: ${absence.reason || absence.notes}\n\n` +
+                      `Reply to this message to approve or deny.`
+                    );
+                  }
+                }
+                
+                response = `Thank you for your absence request. Your request has been submitted and is pending approval. ` +
+                          `You will be notified once it has been processed.`;
+              } catch (absenceErr) {
+                console.error('Absence request error:', absenceErr.message);
+                response = `I'm sorry, I couldn't process your absence request. Please try again with a clearer message ` +
+                          `or contact your administrator directly.`;
+              }
+            } else if (intent === 'general_question') {
+              // For general questions, use Azure OpenAI to generate a response
+              const conversationHistory = conversation.messages.map(msg => ({
+                role: msg.sender === 'user' ? 'user' : 'assistant',
+                content: msg.content
+              }));
+              
+              response = await processWithAzureOpenAI(messageContent, conversationHistory, user);
             } else {
-              // For other queries, use Azure OpenAI to generate a response
+              // Fallback for any other intent or if classification fails
+              console.log(`Using fallback handler for intent: ${intent}`);
               const conversationHistory = conversation.messages.map(msg => ({
                 role: msg.sender === 'user' ? 'user' : 'assistant',
                 content: msg.content
@@ -585,21 +674,108 @@ router.put('/settings', [auth, admin], async (req, res) => {
 // Admin command handler for WhatsApp
 async function handleAdminCommand(command, user, phoneNumber) {
   try {
-    // Split command into parts
+    // Process natural language admin commands
+    // Extract command intent using NLP patterns
+    const commandLower = command.toLowerCase();
+    
+    // Determine the admin action based on natural language understanding
+    let action = '';
+    
+    // Help command detection
+    if (commandLower.includes('help') || 
+        commandLower.includes('commands') || 
+        commandLower.includes('what can you do') || 
+        commandLower.includes('show commands')) {
+      action = 'help';
+    }
+    // Users command detection
+    else if (commandLower.includes('users') || 
+             commandLower.includes('show users') || 
+             commandLower.includes('list users') || 
+             commandLower.includes('all users')) {
+      action = 'users';
+    }
+    // Schedules command detection
+    else if (commandLower.includes('schedules') || 
+             commandLower.includes('today\'s schedules') || 
+             commandLower.includes('show schedules') || 
+             commandLower.includes('list schedules')) {
+      action = 'schedules';
+    }
+    // Broadcast command detection
+    else if (commandLower.includes('broadcast') || 
+             commandLower.includes('message all') || 
+             commandLower.includes('send to all') || 
+             commandLower.includes('message everyone')) {
+      action = 'broadcast';
+    }
+    // Notify command detection
+    else if (commandLower.includes('notify') || 
+             commandLower.includes('message user') || 
+             commandLower.includes('send to user')) {
+      action = 'notify';
+    }
+    // Status command detection
+    else if (commandLower.includes('status') || 
+             commandLower.includes('system status') || 
+             commandLower.includes('show status')) {
+      action = 'status';
+    }
+    // Absences command detection
+    else if (commandLower.includes('absences') || 
+             commandLower.includes('absence requests') || 
+             commandLower.includes('time off requests') || 
+             commandLower.includes('pending absences')) {
+      action = 'absences';
+    }
+    // Approve command detection
+    else if (commandLower.includes('approve') || 
+             commandLower.includes('accept')) {
+      action = 'approve';
+    }
+    // Reject command detection
+    else if (commandLower.includes('reject') || 
+             commandLower.includes('deny') || 
+             commandLower.includes('decline')) {
+      action = 'reject';
+    }
+    else {
+      // Default to help if command not recognized
+      return `I couldn't understand your admin command. Try asking for "admin help" to see available commands.`;
+    }
+    
+    // Split command into parts for parameter extraction
     const parts = command.split(' ');
-    const action = parts[0].toLowerCase();
     
     // Handle different admin commands
     switch (action) {
       case 'help':
-        return `*Admin Commands*\n\n` +
-               `/admin help - Show this help message\n` +
-               `/admin users - List all users\n` +
-               `/admin schedules - List today's schedules\n` +
-               `/admin broadcast [message] - Send message to all users\n` +
-               `/admin notify [userId] [message] - Send message to specific user\n` +
-               `/admin status - Show system status\n` +
-               `/admin absences - Show pending absence requests`;
+        return `*Available Admin Commands:*
+
+You can now use natural language for all commands! Here are some examples:
+
+*Help & Information*
+- "Show admin commands" or "What can I do as admin?"
+
+*User Management*
+- "Show all users" or "List the users in the system"
+
+*Schedules*
+- "Show today's schedules" or "What are the schedules for today?"
+
+*Messaging*
+- "Broadcast: [your message]" or "Send message to everyone: [your message]"
+- "Notify John about [your message]" or "Send message to John: [your message]"
+
+*System Status*
+- "Show system status" or "What's the current system status?"
+
+*Absence Management*
+- "Show pending absences" or "List absence requests"
+- "Approve absence from John" or "Accept John's absence request"
+- "Reject absence request from Sarah" or "Deny Sarah's time off"
+
+You can use natural language - the system will understand your intent!`;
       
       case 'users':
         const users = await User.find().select('name email phone role department position');
@@ -615,23 +791,67 @@ async function handleAdminCommand(command, user, phoneNumber) {
         return userList;
       
       case 'schedules':
-        // Get today's date range
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // Process natural language date references in the command
+        let targetDate = new Date();
+        targetDate.setHours(0, 0, 0, 0);
         
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        
-        // Find schedules for today
-        const schedules = await Schedule.find({
-          date: { $gte: today, $lt: tomorrow }
-        }).populate('location assignedEmployees', 'name address city');
-        
-        if (schedules.length === 0) {
-          return 'No schedules found for today.';
+        // Check for date references in the command
+        if (commandLower.includes('tomorrow')) {
+          targetDate.setDate(targetDate.getDate() + 1);
+        } else if (commandLower.includes('yesterday')) {
+          targetDate.setDate(targetDate.getDate() - 1);
+        } else if (commandLower.match(/next (mon|tues|wednes|thurs|fri|satur|sun)day/i)) {
+          // Handle next weekday references
+          const dayMatch = commandLower.match(/next (mon|tues|wednes|thurs|fri|satur|sun)day/i);
+          if (dayMatch) {
+            const dayPrefix = dayMatch[1].toLowerCase();
+            let targetDay;
+            
+            switch (dayPrefix) {
+              case 'mon': targetDay = 1; break;
+              case 'tues': targetDay = 2; break;
+              case 'wednes': targetDay = 3; break;
+              case 'thurs': targetDay = 4; break;
+              case 'fri': targetDay = 5; break;
+              case 'satur': targetDay = 6; break;
+              case 'sun': targetDay = 0; break;
+              default: targetDay = null;
+            }
+            
+            if (targetDay !== null) {
+              // Calculate days to add
+              const currentDay = targetDate.getDay();
+              let daysToAdd = targetDay - currentDay;
+              if (daysToAdd <= 0) daysToAdd += 7; // Ensure we're getting next week's day
+              
+              targetDate.setDate(targetDate.getDate() + daysToAdd);
+            }
+          }
+        } else if (commandLower.includes('next week')) {
+          // Set to next Monday
+          const currentDay = targetDate.getDay();
+          const daysToAdd = currentDay === 1 ? 7 : (8 - currentDay) % 7;
+          targetDate.setDate(targetDate.getDate() + daysToAdd);
         }
         
-        let scheduleList = '*Today\'s Schedules*\n\n';
+        // Get the next day for date range
+        const nextDay = new Date(targetDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        
+        // Find schedules for the target date
+        const schedules = await Schedule.find({
+          date: { $gte: targetDate, $lt: nextDay }
+        }).populate('location assignedEmployees', 'name address city');
+        
+        // Format the date for display
+        const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const formattedDate = targetDate.toLocaleDateString(undefined, dateOptions);
+        
+        if (schedules.length === 0) {
+          return `No schedules found for ${formattedDate}.`;
+        }
+        
+        let scheduleList = `*Schedules for ${formattedDate}*\n\n`;
         
         schedules.forEach((schedule, index) => {
           scheduleList += `${index + 1}. ${schedule.title}\n`;
@@ -643,11 +863,31 @@ async function handleAdminCommand(command, user, phoneNumber) {
         return scheduleList;
       
       case 'broadcast':
-        if (parts.length < 2) {
-          return 'Error: Message is required for broadcast command.';
+        // Extract the message from natural language command
+        let broadcastMessage = '';
+        
+        // Find the message content after broadcast indicators
+        const broadcastIndicators = ['broadcast', 'message all', 'send to all', 'message everyone', 'tell everyone', 'announce'];
+        
+        // Find which indicator was used and extract the message after it
+        for (const indicator of broadcastIndicators) {
+          const index = commandLower.indexOf(indicator);
+          if (index !== -1) {
+            // Extract message after the indicator plus its length and a space
+            const startPos = index + indicator.length + 1;
+            if (startPos < command.length) {
+              broadcastMessage = command.substring(startPos).trim();
+              break;
+            }
+          }
         }
         
-        const broadcastMessage = parts.slice(1).join(' ');
+        // Check if there's a message to broadcast
+        if (!broadcastMessage) {
+          return 'Please provide a message to broadcast. For example: "broadcast Hello everyone" or "send message to all users: Important update"';
+        }
+        
+        // Get all users
         const allUsers = await User.find().select('phone');
         let sentCount = 0;
         
@@ -662,28 +902,96 @@ async function handleAdminCommand(command, user, phoneNumber) {
         return `Broadcast message sent to ${sentCount} users.`;
       
       case 'notify':
-        if (parts.length < 3) {
-          return 'Error: User ID and message are required for notify command.';
+        // Extract user identifier and message from natural language command
+        let userIdentifier = '';
+        let notifyMessage = '';
+        
+        // Common patterns for notify commands
+        // Examples: "notify John about meeting", "send message to +1234567890: Hello", "message user John: reminder"
+        
+        // Pattern 1: "notify [user] about [message]" or "notify [user] [message]"
+        if (commandLower.includes('notify')) {
+          const afterNotify = command.substring(commandLower.indexOf('notify') + 'notify'.length).trim();
+          // Check if "about" is used as separator
+          if (afterNotify.includes(' about ')) {
+            const parts = afterNotify.split(' about ');
+            userIdentifier = parts[0].trim();
+            notifyMessage = parts[1].trim();
+          } else {
+            // Extract first word as user and rest as message
+            const parts = afterNotify.split(' ');
+            if (parts.length >= 2) {
+              userIdentifier = parts[0].trim();
+              notifyMessage = parts.slice(1).join(' ').trim();
+            }
+          }
         }
         
-        const userId = parts[1];
-        const notifyMessage = parts.slice(2).join(' ');
-        
-        // Find user by ID
-        const targetUser = await User.findById(userId);
-        
-        if (!targetUser) {
-          return `Error: User with ID ${userId} not found.`;
+        // Pattern 2: "send message to [user]: [message]" or "message user [user]: [message]"
+        else if (commandLower.includes('message to') || commandLower.includes('message user') || 
+                commandLower.includes('send to user')) {
+          let afterIndicator = '';
+          
+          if (commandLower.includes('message to')) {
+            afterIndicator = command.substring(commandLower.indexOf('message to') + 'message to'.length).trim();
+          } else if (commandLower.includes('message user')) {
+            afterIndicator = command.substring(commandLower.indexOf('message user') + 'message user'.length).trim();
+          } else if (commandLower.includes('send to user')) {
+            afterIndicator = command.substring(commandLower.indexOf('send to user') + 'send to user'.length).trim();
+          }
+          
+          // Check if colon is used as separator
+          if (afterIndicator.includes(':')) {
+            const parts = afterIndicator.split(':');
+            userIdentifier = parts[0].trim();
+            notifyMessage = parts[1].trim();
+          } else if (afterIndicator.includes(' that ')) {
+            // Pattern: "tell John that the meeting is canceled"
+            const parts = afterIndicator.split(' that ');
+            userIdentifier = parts[0].trim();
+            notifyMessage = parts[1].trim();
+          } else {
+            // Try to extract first word as user and rest as message
+            const parts = afterIndicator.split(' ');
+            if (parts.length >= 2) {
+              userIdentifier = parts[0].trim();
+              notifyMessage = parts.slice(1).join(' ').trim();
+            }
+          }
         }
         
-        if (!targetUser.phone) {
-          return `Error: User ${targetUser.name} does not have a phone number.`;
+        // Check if we have both user and message
+        if (!userIdentifier || !notifyMessage) {
+          return 'Please specify both a user and a message. For example: "notify John about the meeting" or "send message to John: Hello"';
         }
         
-        // Send message to user
-        await sendWhatsAppMessage(targetUser.phone, `*MESSAGE FROM ADMIN*\n\n${notifyMessage}`);
+        // Find the user by ID, phone, or name
+        let recipient;
+        if (mongoose.Types.ObjectId.isValid(userIdentifier)) {
+          recipient = await User.findById(userIdentifier);
+        } else {
+          // Try to find by phone (with or without +)
+          const phoneQuery = userIdentifier.startsWith('+') ? userIdentifier : `+${userIdentifier}`;
+          recipient = await User.findOne({ phone: { $regex: phoneQuery, $options: 'i' } });
+          
+          // If not found by phone, try by name
+          if (!recipient) {
+            recipient = await User.findOne({ name: { $regex: userIdentifier, $options: 'i' } });
+          }
+        }
         
-        return `Message sent to ${targetUser.name}.`;
+        if (!recipient || !recipient.phone) {
+          return `Could not find a user with identifier: ${userIdentifier}`;
+        }
+        
+        // Send the message
+        try {
+          await sendWhatsAppMessage(recipient.phone, `*MESSAGE FROM ADMIN*\n\n${notifyMessage}`);
+          return `Message sent to ${recipient.name}.`;
+        } catch (err) {
+          console.error(`Failed to send notification to ${recipient.phone}:`, err);
+          return `Failed to send message to ${recipient.name}. Error: ${err.message}`;
+        }
       
       case 'status':
         // Get system status
@@ -728,18 +1036,72 @@ async function handleAdminCommand(command, user, phoneNumber) {
         return absenceList;
       
       case 'approve':
-        if (parts.length < 2) {
-          return 'Error: Absence ID is required for approve command.';
+        // Extract absence ID from natural language command
+        let approveAbsenceId = '';
+        
+        // Look for patterns like "approve absence [id]" or "accept request [id]"
+        const approvePatterns = [
+          /approve\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+          /accept\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+          /approve\s+(?:the\s+)?(?:absence|request)\s*(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i
+        ];
+        
+        // Try to extract absence ID using regex patterns
+        for (const pattern of approvePatterns) {
+          const match = command.match(pattern);
+          if (match && match[1]) {
+            // If it's a MongoDB ObjectId format
+            if (match[1].match(/^[a-f0-9]{24}$/i)) {
+              approveAbsenceId = match[1];
+              break;
+            }
+          }
         }
         
-        const approveId = parts[1];
-        const Absence1 = require('../../models/Absence');
-        const absenceToApprove = await Absence1.findById(approveId).populate('user', 'name phone');
+        // If no ID found through regex, try to find the most recent absence request mentioned
+        if (!approveAbsenceId) {
+          // Look for user name in the command
+          const userNameMatch = command.match(/(?:from|by|for)\s+([\w\s]+)(?:\s+on|\s+for|\s+dated|$)/i);
+          
+          if (userNameMatch && userNameMatch[1]) {
+            const userName = userNameMatch[1].trim();
+            // Find user by name
+            const absenceUser = await User.findOne({ name: { $regex: userName, $options: 'i' } });
+            
+            if (absenceUser) {
+              // Find the most recent pending absence for this user
+              const recentAbsence = await Absence.findOne({ 
+                user: absenceUser._id,
+                status: 'pending'
+              }).sort({ createdAt: -1 });
+              
+              if (recentAbsence) {
+                approveAbsenceId = recentAbsence._id.toString();
+              }
+            }
+          } else {
+            // If no user specified, look for the most recent pending absence
+            const recentAbsence = await Absence.findOne({ status: 'pending' })
+              .sort({ createdAt: -1 });
+            
+            if (recentAbsence) {
+              approveAbsenceId = recentAbsence._id.toString();
+            }
+          }
+        }
         
+        // Check if we found an absence ID
+        if (!approveAbsenceId) {
+          return 'I couldn\'t identify which absence request you want to approve. Please specify an absence ID or mention the user\'s name.';
+        }
+        
+        // Find the absence
+        const absenceToApprove = await Absence.findById(approveAbsenceId).populate('user', 'name phone');
         if (!absenceToApprove) {
-          return `Error: Absence with ID ${approveId} not found.`;
+          return `Could not find an absence with ID: ${approveAbsenceId}`;
         }
         
+        // Update absence status
         absenceToApprove.status = 'approved';
         absenceToApprove.approvedBy = user._id;
         absenceToApprove.approvedAt = Date.now();
@@ -756,21 +1118,77 @@ async function handleAdminCommand(command, user, phoneNumber) {
         return `Absence request for ${absenceToApprove.user.name} has been approved.`;
       
       case 'reject':
-        if (parts.length < 2) {
-          return 'Error: Absence ID is required for reject command.';
+        // Extract absence ID from natural language command
+        let rejectAbsenceId = '';
+        
+        // Look for patterns like "reject absence [id]" or "deny request [id]"
+        const rejectPatterns = [
+          /reject\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+          /deny\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+          /decline\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+          /reject\s+(?:the\s+)?(?:absence|request)\s*(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i
+        ];
+        
+        // Try to extract absence ID using regex patterns
+        for (const pattern of rejectPatterns) {
+          const match = command.match(pattern);
+          if (match && match[1]) {
+            // If it's a MongoDB ObjectId format
+            if (match[1].match(/^[a-f0-9]{24}$/i)) {
+              rejectAbsenceId = match[1];
+              break;
+            }
+          }
         }
         
-        const rejectId = parts[1];
-        const Absence2 = require('../../models/Absence');
-        const absenceToReject = await Absence2.findById(rejectId).populate('user', 'name phone');
+        // If no ID found through regex, try to find the most recent absence request mentioned
+        if (!rejectAbsenceId) {
+          // Look for user name in the command
+          const userNameMatch = command.match(/(?:from|by|for)\s+([\w\s]+)(?:\s+on|\s+for|\s+dated|$)/i);
+          
+          if (userNameMatch && userNameMatch[1]) {
+            const userName = userNameMatch[1].trim();
+            // Find user by name
+            const absenceUser = await User.findOne({ name: { $regex: userName, $options: 'i' } });
+            
+            if (absenceUser) {
+              // Find the most recent pending absence for this user
+              const recentAbsence = await Absence.findOne({ 
+                user: absenceUser._id,
+                status: 'pending'
+              }).sort({ createdAt: -1 });
+              
+              if (recentAbsence) {
+                rejectAbsenceId = recentAbsence._id.toString();
+              }
+            }
+          } else {
+            // If no user specified, look for the most recent pending absence
+            const recentAbsence = await Absence.findOne({ status: 'pending' })
+              .sort({ createdAt: -1 });
+            
+            if (recentAbsence) {
+              rejectAbsenceId = recentAbsence._id.toString();
+            }
+          }
+        }
+        
+        // Check if we found an absence ID
+        if (!rejectAbsenceId) {
+          return 'I couldn\'t identify which absence request you want to reject. Please specify an absence ID or mention the user\'s name.';
+        }
+        
+        // Find the absence
+        const absenceToReject = await Absence.findById(rejectAbsenceId).populate('user', 'name phone');
         
         if (!absenceToReject) {
-          return `Error: Absence with ID ${rejectId} not found.`;
+          return `Could not find an absence with ID: ${rejectAbsenceId}`;
         }
         
+        // Update absence status
         absenceToReject.status = 'rejected';
-        absenceToReject.approvedBy = user._id;
-        absenceToReject.approvedAt = Date.now();
+        absenceToReject.rejectedBy = user._id;
+        absenceToReject.rejectedAt = Date.now();
         await absenceToReject.save();
         
         // Notify user of rejection
