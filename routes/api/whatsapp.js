@@ -1390,105 +1390,25 @@ async function handleAdminCommand(command, user, phoneNumber) {
       return `You don't have permission to access this information. This feature requires administrator privileges.`;
     }
     
-    // Process natural language admin commands
-    // Extract command intent using NLP patterns
-    const commandLower = command.toLowerCase();
+    // Import the AI service for command classification
+    const { classifyAdminCommand } = require('../../utils/aiService');
     
-    // Determine the admin action based on natural language understanding
-    let action = '';
+    // Use Azure OpenAI to classify the admin command
+    console.log(`Classifying admin command with AI: "${command}"`);
+    const classificationResult = await classifyAdminCommand(command);
     
-    // Help command detection
-    if (commandLower.includes('help') || 
-        commandLower.includes('commands') || 
-        commandLower.includes('what can you do') || 
-        commandLower.includes('show commands')) {
-      action = 'help';
-    }
-    // Users command detection
-    else if (commandLower.includes('users') || 
-             commandLower.includes('show users') || 
-             commandLower.includes('list users') || 
-             commandLower.includes('all users') ||
-             (commandLower.includes('tell me') && commandLower.includes('users')) ||
-             (commandLower.includes('users') && commandLower.includes('phone')) ||
-             (commandLower.includes('users') && commandLower.includes('number'))) {
-      action = 'users';
-    }
-    // Specific user query detection
-    else if ((commandLower.includes('user') && (commandLower.includes('named') || commandLower.includes('about') || commandLower.includes('find') || commandLower.includes('get'))) ||
-             (commandLower.includes('tell me about') && !commandLower.includes('all')) ||
-             (commandLower.includes('show me') && commandLower.includes('user') && !commandLower.includes('all')) ||
-             (commandLower.includes('information') && commandLower.includes('user'))) {
-      action = 'user_query';
-    }
-    // Schedules command detection
-    else if (commandLower.includes('schedules') || 
-             commandLower.includes('today\'s schedules') || 
-             commandLower.includes('show schedules') || 
-             commandLower.includes('list schedules')) {
-      action = 'schedules';
-    }
-    // Broadcast command detection
-    else if (commandLower.includes('broadcast') || 
-             commandLower.includes('message all') || 
-             commandLower.includes('send to all') || 
-             commandLower.includes('message everyone')) {
-      action = 'broadcast';
-    }
-    // Notify command detection
-    else if (commandLower.includes('notify') || 
-             commandLower.includes('message user') || 
-             commandLower.includes('send to user') ||
-             commandLower.includes('send message to')) {
-      action = 'notify';
-    }
-    // Status command detection
-    else if (commandLower.includes('status') || 
-             commandLower.includes('system status') || 
-             commandLower.includes('show status')) {
-      action = 'status';
-    }
-    // Absences command detection
-    else if (commandLower.includes('absences') || 
-             commandLower.includes('absence requests') || 
-             commandLower.includes('time off requests') || 
-             commandLower.includes('pending absences')) {
-      action = 'absences';
-    }
-    // Approve command detection
-    else if (commandLower.includes('approve') || 
-             commandLower.includes('accept')) {
-      action = 'approve';
-    }
-    // Reject command detection
-    else if (commandLower.includes('reject') || 
-             commandLower.includes('deny') || 
-             commandLower.includes('decline')) {
-      action = 'reject';
-    }
-    // General collection query detection
-    else if (commandLower.includes('collection') || 
-             commandLower.includes('database') || 
-             commandLower.includes('model') || 
-             commandLower.includes('schema') || 
-             commandLower.includes('data') || 
-             commandLower.includes('information about') || 
-             commandLower.includes('tell me about') || 
-             commandLower.includes('show me') || 
-             commandLower.includes('get') || 
-             commandLower.includes('find') ||
-             commandLower.includes('all locations') ||
-             commandLower.includes('list locations') ||
-             commandLower.includes('show locations') ||
-             commandLower.includes('give locations')) {
-      action = 'collection_query';
-    }
-    else {
-      // Default to help if command not recognized
+    // Extract the action and parameters from the classification result
+    const action = classificationResult.action;
+    const parameters = classificationResult.parameters || {};
+    
+    // If the command couldn't be classified, provide help
+    if (action === 'unknown') {
       return `I couldn't understand your admin command. Try asking for "admin help" to see available commands.`;
     }
     
-    // Split command into parts for parameter extraction
+    console.log(`Classified admin command: ${action}`, parameters);
+    
+    // Split command into parts for backward compatibility
     const parts = command.split(' ');
     
     // Handle different admin commands
@@ -2060,72 +1980,89 @@ You can use natural language - the system will understand your intent!`;
         return `Broadcast message sent to ${sentCount} users.`;
       
       case 'notify':
-        // Extract user identifier and message from natural language command
-        let userIdentifier = '';
-        let notifyMessage = '';
+        // Extract user identifier and message from AI-extracted parameters
+        let userIdentifier = parameters.user_id || parameters.user_name || parameters.recipient || '';
+        let notifyMessage = parameters.message || parameters.content || '';
         
-        // Common patterns for notify commands
-        // Examples: "notify John about meeting", "send message to +1234567890: Hello", "message user John: reminder"
-        
-        // Pattern 1: "notify [user] about [message]" or "notify [user] [message]"
-        if (commandLower.includes('notify')) {
-          const afterNotify = command.substring(commandLower.indexOf('notify') + 'notify'.length).trim();
-          // Check if "about" is used as separator
-          if (afterNotify.includes(' about ')) {
-            const parts = afterNotify.split(' about ');
-            userIdentifier = parts[0].trim();
-            notifyMessage = parts[1].trim();
-          } else {
-            // Try to find a natural break point for user and message
-            // First check if there's a clear separator like a comma
-            const commaIndex = afterNotify.indexOf(',');
-            if (commaIndex > 0) {
-              userIdentifier = afterNotify.substring(0, commaIndex).trim();
-              notifyMessage = afterNotify.substring(commaIndex + 1).trim();
+        // If AI didn't extract parameters properly, fall back to traditional parsing
+        if (!userIdentifier || !notifyMessage) {
+          console.log('AI parameters incomplete, falling back to pattern matching');
+          
+          // Common patterns for notify commands
+          // Examples: "notify John about meeting", "send message to +1234567890: Hello", "message user John: reminder"
+          
+          // Pattern 1: "notify [user] about [message]" or "notify [user] [message]"
+          if (commandLower.includes('notify')) {
+            const afterNotify = command.substring(commandLower.indexOf('notify') + 'notify'.length).trim();
+            // Check if "about" is used as separator
+            if (afterNotify.includes(' about ')) {
+              const parts = afterNotify.split(' about ');
+              userIdentifier = parts[0].trim();
+              notifyMessage = parts[1].trim();
             } else {
-              // Extract first word as user and rest as message
-              const parts = afterNotify.split(' ');
+              // Try to find a natural break point for user and message
+              // First check if there's a clear separator like a comma
+              const commaIndex = afterNotify.indexOf(',');
+              if (commaIndex > 0) {
+                userIdentifier = afterNotify.substring(0, commaIndex).trim();
+                notifyMessage = afterNotify.substring(commaIndex + 1).trim();
+              } else {
+                // Extract first word as user and rest as message
+                const parts = afterNotify.split(' ');
+                if (parts.length >= 2) {
+                  userIdentifier = parts[0].trim();
+                  notifyMessage = parts.slice(1).join(' ').trim();
+                }
+              }
+            }
+          }
+          
+          // Pattern 2: "send message to [user]: [message]" or "message user [user]: [message]"
+          else if (commandLower.includes('message to') || commandLower.includes('message user') || 
+                  commandLower.includes('send to user') || commandLower.includes('send message to')) {
+            let afterIndicator = '';
+            
+            if (commandLower.includes('message to')) {
+              afterIndicator = command.substring(commandLower.indexOf('message to') + 'message to'.length).trim();
+            } else if (commandLower.includes('message user')) {
+              afterIndicator = command.substring(commandLower.indexOf('message user') + 'message user'.length).trim();
+            } else if (commandLower.includes('send to user')) {
+              afterIndicator = command.substring(commandLower.indexOf('send to user') + 'send to user'.length).trim();
+            } else if (commandLower.includes('send message to')) {
+              afterIndicator = command.substring(commandLower.indexOf('send message to') + 'send message to'.length).trim();
+            }
+            
+            // Check if colon is used as separator
+            if (afterIndicator.includes(':')) {
+              const parts = afterIndicator.split(':');
+              userIdentifier = parts[0].trim();
+              notifyMessage = parts[1].trim();
+            } else if (afterIndicator.includes(' that ')) {
+              // Pattern: "tell John that the meeting is canceled"
+              const parts = afterIndicator.split(' that ');
+              userIdentifier = parts[0].trim();
+              notifyMessage = parts[1].trim();
+            } else {
+              // Try to extract first word as user and rest as message
+              const parts = afterIndicator.split(' ');
               if (parts.length >= 2) {
                 userIdentifier = parts[0].trim();
                 notifyMessage = parts.slice(1).join(' ').trim();
               }
             }
           }
-        }
-        
-        // Pattern 2: "send message to [user]: [message]" or "message user [user]: [message]"
-        else if (commandLower.includes('message to') || commandLower.includes('message user') || 
-                commandLower.includes('send to user') || commandLower.includes('send message to')) {
-          let afterIndicator = '';
-          
-          if (commandLower.includes('message to')) {
-            afterIndicator = command.substring(commandLower.indexOf('message to') + 'message to'.length).trim();
-          } else if (commandLower.includes('message user')) {
-            afterIndicator = command.substring(commandLower.indexOf('message user') + 'message user'.length).trim();
-          } else if (commandLower.includes('send to user')) {
-            afterIndicator = command.substring(commandLower.indexOf('send to user') + 'send to user'.length).trim();
-          } else if (commandLower.includes('send message to')) {
-            afterIndicator = command.substring(commandLower.indexOf('send message to') + 'send message to'.length).trim();
-          }
-          
-          // Check if colon is used as separator
-          if (afterIndicator.includes(':')) {
-            const parts = afterIndicator.split(':');
-            userIdentifier = parts[0].trim();
-            notifyMessage = parts[1].trim();
-          } else if (afterIndicator.includes(' that ')) {
-            // Pattern: "tell John that the meeting is canceled"
-            const parts = afterIndicator.split(' that ');
-            userIdentifier = parts[0].trim();
-            notifyMessage = parts[1].trim();
-          } else {
+          // Pattern 3: "Send message to [user] [message]" without clear separator
+          else if (commandLower.includes('send message to')) {
+            const afterSendMessageTo = command.substring(commandLower.indexOf('send message to') + 'send message to'.length).trim();
             // Try to extract first word as user and rest as message
-            const parts = afterIndicator.split(' ');
+            const parts = afterSendMessageTo.split(' ');
             if (parts.length >= 2) {
               userIdentifier = parts[0].trim();
               notifyMessage = parts.slice(1).join(' ').trim();
             }
           }
+        } else {
+          console.log('Using AI-extracted parameters:', { userIdentifier, notifyMessage });
         }
         
         // Check if we have both user and message
@@ -2203,29 +2140,81 @@ You can use natural language - the system will understand your intent!`;
         return absenceList;
       
       case 'approve':
-        // Extract absence ID from natural language command
-        let approveAbsenceId = '';
+        // Extract absence ID or user name from AI-extracted parameters
+        let approveAbsenceId = parameters.absence_id || '';
+        let userToApprove = parameters.user_id || parameters.user_name || parameters.recipient || '';
         
-        // Look for patterns like "approve absence [id]" or "accept request [id]"
-        const approvePatterns = [
-          /approve\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
-          /accept\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
-          /approve\s+(?:the\s+)?(?:absence|request)\s+(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i,
-          /approve\s+([\w\s]+)\s+(?:absence|request)/i  // Pattern for "Approve [user name] absence request"
-        ];
+        console.log('AI-extracted approve parameters:', { approveAbsenceId, userToApprove });
         
-        // Try to extract absence ID using regex patterns
-        for (const pattern of approvePatterns) {
-          const match = command.match(pattern);
-          if (match && match[1]) {
-            // If it's a MongoDB ObjectId format
-            if (match[1].match(/^[a-f0-9]{24}$/i)) {
-              approveAbsenceId = match[1];
-              break;
-            } 
-            // If it's a user name (from our new pattern)
-            else if (pattern.toString().includes('approve\\s+([\\w\\s]+)\\s+(?:absence|request)')) {
-              const userName = match[1].trim();
+        // If AI didn't extract absence ID directly, but provided a user, try to find their absence
+        if (!approveAbsenceId && userToApprove) {
+          // Find user by name
+          const absenceUser = await User.findOne({ name: { $regex: userToApprove, $options: 'i' } });
+          
+          if (absenceUser) {
+            // Find the most recent pending absence for this user
+            const recentAbsence = await Absence.findOne({ 
+              user: absenceUser._id,
+              status: 'pending'
+            }).sort({ createdAt: -1 });
+            
+            if (recentAbsence) {
+              approveAbsenceId = recentAbsence._id.toString();
+              console.log(`Found absence ID ${approveAbsenceId} for user ${userToApprove}`);
+            }
+          }
+        }
+        
+        // If AI extraction failed, fall back to traditional pattern matching
+        if (!approveAbsenceId) {
+          console.log('AI parameters incomplete, falling back to pattern matching');
+          
+          // Look for patterns like "approve absence [id]" or "accept request [id]"
+          const approvePatterns = [
+            /approve\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+            /accept\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+            /approve\s+(?:the\s+)?(?:absence|request)\s+(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i,
+            /approve\s+([\w\s]+)\s+(?:absence|request)/i  // Pattern for "Approve [user name] absence request"
+          ];
+          
+          // Try to extract absence ID using regex patterns
+          for (const pattern of approvePatterns) {
+            const match = command.match(pattern);
+            if (match && match[1]) {
+              // If it's a MongoDB ObjectId format
+              if (match[1].match(/^[a-f0-9]{24}$/i)) {
+                approveAbsenceId = match[1];
+                break;
+              } 
+              // If it's a user name (from our new pattern)
+              else if (pattern.toString().includes('approve\\s+([\\w\\s]+)\\s+(?:absence|request)')) {
+                const userName = match[1].trim();
+                // Find user by name
+                const absenceUser = await User.findOne({ name: { $regex: userName, $options: 'i' } });
+                
+                if (absenceUser) {
+                  // Find the most recent pending absence for this user
+                  const recentAbsence = await Absence.findOne({ 
+                    user: absenceUser._id,
+                    status: 'pending'
+                  }).sort({ createdAt: -1 });
+                  
+                  if (recentAbsence) {
+                    approveAbsenceId = recentAbsence._id.toString();
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          
+          // If no ID found through regex, try to find the most recent absence request mentioned
+          if (!approveAbsenceId) {
+            // Look for user name in the command
+            const userNameMatch = command.match(/(?:from|by|for)\s+([\w\s]+)(?:\s+on|\s+for|\s+dated|$)/i);
+            
+            if (userNameMatch && userNameMatch[1]) {
+              const userName = userNameMatch[1].trim();
               // Find user by name
               const absenceUser = await User.findOne({ name: { $regex: userName, $options: 'i' } });
               
@@ -2238,41 +2227,16 @@ You can use natural language - the system will understand your intent!`;
                 
                 if (recentAbsence) {
                   approveAbsenceId = recentAbsence._id.toString();
-                  break;
                 }
               }
-            }
-          }
-        }
-        
-        // If no ID found through regex, try to find the most recent absence request mentioned
-        if (!approveAbsenceId) {
-          // Look for user name in the command
-          const userNameMatch = command.match(/(?:from|by|for)\s+([\w\s]+)(?:\s+on|\s+for|\s+dated|$)/i);
-          
-          if (userNameMatch && userNameMatch[1]) {
-            const userName = userNameMatch[1].trim();
-            // Find user by name
-            const absenceUser = await User.findOne({ name: { $regex: userName, $options: 'i' } });
-            
-            if (absenceUser) {
-              // Find the most recent pending absence for this user
-              const recentAbsence = await Absence.findOne({ 
-                user: absenceUser._id,
-                status: 'pending'
-              }).sort({ createdAt: -1 });
+            } else {
+              // If no user specified, look for the most recent pending absence
+              const recentAbsence = await Absence.findOne({ status: 'pending' })
+                .sort({ createdAt: -1 });
               
               if (recentAbsence) {
                 approveAbsenceId = recentAbsence._id.toString();
               }
-            }
-          } else {
-            // If no user specified, look for the most recent pending absence
-            const recentAbsence = await Absence.findOne({ status: 'pending' })
-              .sort({ createdAt: -1 });
-            
-            if (recentAbsence) {
-              approveAbsenceId = recentAbsence._id.toString();
             }
           }
         }
@@ -2311,57 +2275,104 @@ You can use natural language - the system will understand your intent!`;
         return `Absence request for ${absenceToApprove.user.name} has been approved.`;
       
       case 'reject':
-        // Extract absence ID from natural language command
-        let rejectAbsenceId = '';
+        // Extract absence ID or user name from AI-extracted parameters
+        let rejectAbsenceId = parameters.absence_id || '';
+        let userToReject = parameters.user_id || parameters.user_name || parameters.recipient || '';
         
-        // Look for patterns like "reject absence [id]" or "deny request [id]"
-        const rejectPatterns = [
-          /reject\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
-          /deny\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
-          /decline\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
-          /reject\s+(?:the\s+)?(?:absence|request)\s*(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i
-        ];
+        console.log('AI-extracted reject parameters:', { rejectAbsenceId, userToReject });
         
-        // Try to extract absence ID using regex patterns
-        for (const pattern of rejectPatterns) {
-          const match = command.match(pattern);
-          if (match && match[1]) {
-            // If it's a MongoDB ObjectId format
-            if (match[1].match(/^[a-f0-9]{24}$/i)) {
-              rejectAbsenceId = match[1];
-              break;
+        // If AI didn't extract absence ID directly, but provided a user, try to find their absence
+        if (!rejectAbsenceId && userToReject) {
+          // Find user by name
+          const absenceUser = await User.findOne({ name: { $regex: userToReject, $options: 'i' } });
+          
+          if (absenceUser) {
+            // Find the most recent pending absence for this user
+            const recentAbsence = await Absence.findOne({ 
+              user: absenceUser._id,
+              status: 'pending'
+            }).sort({ createdAt: -1 });
+            
+            if (recentAbsence) {
+              rejectAbsenceId = recentAbsence._id.toString();
+              console.log(`Found absence ID ${rejectAbsenceId} for user ${userToReject}`);
             }
           }
         }
         
-        // If no ID found through regex, try to find the most recent absence request mentioned
+        // If AI extraction failed, fall back to traditional pattern matching
         if (!rejectAbsenceId) {
-          // Look for user name in the command
-          const userNameMatch = command.match(/(?:from|by|for)\s+([\w\s]+)(?:\s+on|\s+for|\s+dated|$)/i);
+          console.log('AI parameters incomplete, falling back to pattern matching');
           
-          if (userNameMatch && userNameMatch[1]) {
-            const userName = userNameMatch[1].trim();
-            // Find user by name
-            const absenceUser = await User.findOne({ name: { $regex: userName, $options: 'i' } });
+          // Look for patterns like "reject absence [id]" or "deny request [id]"
+          const rejectPatterns = [
+            /reject\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+            /deny\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+            /decline\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
+            /reject\s+(?:the\s+)?(?:absence|request)\s*(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i,
+            /reject\s+([\w\s]+)\s+(?:absence|request)/i  // Pattern for "Reject [user name] absence request"
+          ];
+          
+          // Try to extract absence ID using regex patterns
+          for (const pattern of rejectPatterns) {
+            const match = command.match(pattern);
+            if (match && match[1]) {
+              // If it's a MongoDB ObjectId format
+              if (match[1].match(/^[a-f0-9]{24}$/i)) {
+                rejectAbsenceId = match[1];
+                break;
+              }
+              // If it's a user name (from our new pattern)
+              else if (pattern.toString().includes('reject\\s+([\\w\\s]+)\\s+(?:absence|request)')) {
+                const userName = match[1].trim();
+                // Find user by name
+                const absenceUser = await User.findOne({ name: { $regex: userName, $options: 'i' } });
+                
+                if (absenceUser) {
+                  // Find the most recent pending absence for this user
+                  const recentAbsence = await Absence.findOne({ 
+                    user: absenceUser._id,
+                    status: 'pending'
+                  }).sort({ createdAt: -1 });
+                  
+                  if (recentAbsence) {
+                    rejectAbsenceId = recentAbsence._id.toString();
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          
+          // If no ID found through regex, try to find the most recent absence request mentioned
+          if (!rejectAbsenceId) {
+            // Look for user name in the command
+            const userNameMatch = command.match(/(?:from|by|for)\s+([\w\s]+)(?:\s+on|\s+for|\s+dated|$)/i);
             
-            if (absenceUser) {
-              // Find the most recent pending absence for this user
-              const recentAbsence = await Absence.findOne({ 
-                user: absenceUser._id,
-                status: 'pending'
-              }).sort({ createdAt: -1 });
+            if (userNameMatch && userNameMatch[1]) {
+              const userName = userNameMatch[1].trim();
+              // Find user by name
+              const absenceUser = await User.findOne({ name: { $regex: userName, $options: 'i' } });
+              
+              if (absenceUser) {
+                // Find the most recent pending absence for this user
+                const recentAbsence = await Absence.findOne({ 
+                  user: absenceUser._id,
+                  status: 'pending'
+                }).sort({ createdAt: -1 });
+                
+                if (recentAbsence) {
+                  rejectAbsenceId = recentAbsence._id.toString();
+                }
+              }
+            } else {
+              // If no user specified, look for the most recent pending absence
+              const recentAbsence = await Absence.findOne({ status: 'pending' })
+                .sort({ createdAt: -1 });
               
               if (recentAbsence) {
                 rejectAbsenceId = recentAbsence._id.toString();
               }
-            }
-          } else {
-            // If no user specified, look for the most recent pending absence
-            const recentAbsence = await Absence.findOne({ status: 'pending' })
-              .sort({ createdAt: -1 });
-            
-            if (recentAbsence) {
-              rejectAbsenceId = recentAbsence._id.toString();
             }
           }
         }

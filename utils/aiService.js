@@ -199,6 +199,76 @@ export const detectMultipleIntents = async (message) => {
  * @param {Object} modelSchemas - Object containing all available Mongoose model schemas
  * @returns {Promise<Object>} - Object with model name and aggregation pipeline
  */
+/**
+ * Classify admin commands using Azure OpenAI
+ * @param {string} command - Admin command message
+ * @returns {Promise<Object>} - Object with action and parameters
+ */
+export const classifyAdminCommand = async (command) => {
+  try {
+    const client = createOpenAIClient();
+    const deploymentId = process.env.AZURE_OPENAI_DEPLOYMENT_ID || "gpt-4o";
+    
+    const systemMessage = {
+      role: "system",
+      content: `You are an admin command classifier for an Employee Scheduling System.
+      
+      Your task is to classify admin commands into specific actions and extract relevant parameters.
+      
+      Available admin command actions:
+      - help: Show available admin commands
+      - users: List all users in the system
+      - user_query: Query information about a specific user
+      - schedules: Show schedules (today's or for a specific date)
+      - broadcast: Send a message to all users
+      - notify: Send a message to a specific user
+      - status: Show system status
+      - absences: Show absence requests (all or pending)
+      - approve: Approve an absence request
+      - reject: Reject an absence request
+      - collection_query: General database query
+      
+      For each action, extract relevant parameters such as:
+      - user_id or user_name for user-specific commands
+      - message content for broadcast or notify commands
+      - date for schedule queries
+      - absence_id for approve/reject commands
+      
+      Return a JSON object with:
+      - action: The classified admin command action
+      - parameters: An object containing extracted parameters relevant to the action
+      
+      If the command cannot be classified, set action to "unknown".`
+    };
+    
+    const messages = [
+      systemMessage,
+      { role: "user", content: command }
+    ];
+    
+    const response = await client.chat.completions.create({
+      model: deploymentId,
+      messages,
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+      max_tokens: 500,
+    });
+    
+    try {
+      const content = response.choices?.[0]?.message?.content || '{"action":"unknown"}';
+      const result = JSON.parse(content);
+      
+      return result;
+    } catch (parseError) {
+      console.error("JSON parsing error in classifyAdminCommand:", parseError.message);
+      return { action: "unknown", error: parseError.message };
+    }
+  } catch (error) {
+    console.error("Admin command classification error:", error.message);
+    return { action: "unknown", error: error.message };
+  }
+};
+
 export const generateMongoDBPipeline = async (message, user, modelSchemas) => {
   try {
     const client = createOpenAIClient();
