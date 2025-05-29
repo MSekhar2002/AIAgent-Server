@@ -124,9 +124,10 @@ export const detectMultipleIntents = async (message) => {
       - employee_query
       - general_question
       
-      Return ONLY a JSON array of the detected intents. If there is only one intent, the array should have only one element.
-      Example: ["schedule_query", "employee_query"]
-      If no clear intent is detected, return ["general_question"]`
+      Return a JSON object with an 'intents' property containing an array of the detected intents.
+      Example: {"intents": ["schedule_query", "employee_query"]}
+      If there is only one intent, the array should have only one element.
+      If no clear intent is detected, return {"intents": ["general_question"]}`
     };
 
     const messages = [

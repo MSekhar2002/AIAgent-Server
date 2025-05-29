@@ -1438,7 +1438,8 @@ async function handleAdminCommand(command, user, phoneNumber) {
     // Notify command detection
     else if (commandLower.includes('notify') || 
              commandLower.includes('message user') || 
-             commandLower.includes('send to user')) {
+             commandLower.includes('send to user') ||
+             commandLower.includes('send message to')) {
       action = 'notify';
     }
     // Status command detection
@@ -2094,7 +2095,7 @@ You can use natural language - the system will understand your intent!`;
         
         // Pattern 2: "send message to [user]: [message]" or "message user [user]: [message]"
         else if (commandLower.includes('message to') || commandLower.includes('message user') || 
-                commandLower.includes('send to user')) {
+                commandLower.includes('send to user') || commandLower.includes('send message to')) {
           let afterIndicator = '';
           
           if (commandLower.includes('message to')) {
@@ -2103,6 +2104,8 @@ You can use natural language - the system will understand your intent!`;
             afterIndicator = command.substring(commandLower.indexOf('message user') + 'message user'.length).trim();
           } else if (commandLower.includes('send to user')) {
             afterIndicator = command.substring(commandLower.indexOf('send to user') + 'send to user'.length).trim();
+          } else if (commandLower.includes('send message to')) {
+            afterIndicator = command.substring(commandLower.indexOf('send message to') + 'send message to'.length).trim();
           }
           
           // Check if colon is used as separator
@@ -2207,7 +2210,8 @@ You can use natural language - the system will understand your intent!`;
         const approvePatterns = [
           /approve\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
           /accept\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
-          /approve\s+(?:the\s+)?(?:absence|request)\s+(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i
+          /approve\s+(?:the\s+)?(?:absence|request)\s+(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i,
+          /approve\s+([\w\s]+)\s+(?:absence|request)/i  // Pattern for "Approve [user name] absence request"
         ];
         
         // Try to extract absence ID using regex patterns
@@ -2218,6 +2222,25 @@ You can use natural language - the system will understand your intent!`;
             if (match[1].match(/^[a-f0-9]{24}$/i)) {
               approveAbsenceId = match[1];
               break;
+            } 
+            // If it's a user name (from our new pattern)
+            else if (pattern.toString().includes('approve\\s+([\\w\\s]+)\\s+(?:absence|request)')) {
+              const userName = match[1].trim();
+              // Find user by name
+              const absenceUser = await User.findOne({ name: { $regex: userName, $options: 'i' } });
+              
+              if (absenceUser) {
+                // Find the most recent pending absence for this user
+                const recentAbsence = await Absence.findOne({ 
+                  user: absenceUser._id,
+                  status: 'pending'
+                }).sort({ createdAt: -1 });
+                
+                if (recentAbsence) {
+                  approveAbsenceId = recentAbsence._id.toString();
+                  break;
+                }
+              }
             }
           }
         }
@@ -2267,7 +2290,8 @@ You can use natural language - the system will understand your intent!`;
         
         // Update absence status
         absenceToApprove.status = 'approved';
-        absenceToApprove.approvedBy = user._id;
+        // Use the admin user who is executing this command
+        absenceToApprove.approvedBy = user._id; // 'user' is passed as parameter to handleAdminCommand
         absenceToApprove.approvedAt = Date.now();
         await absenceToApprove.save();
         
