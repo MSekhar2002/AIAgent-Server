@@ -8,6 +8,8 @@ const User = require('../../models/User');
 const Schedule = require('../../models/Schedule');
 const Location = require('../../models/Location');
 const Conversation = require('../../models/Conversation');
+const Absence = require('../../models/Absence');
+const HourTracking = require('../../models/HourTracking');
 const { sendWhatsAppMessage } = require('../../utils/whatsappService');
 const { processWithAzureOpenAI } = require('../../utils/aiService');
 const { convertSpeechToText } = require('../../utils/speechService');
@@ -1473,7 +1475,11 @@ async function handleAdminCommand(command, user, phoneNumber) {
              commandLower.includes('tell me about') || 
              commandLower.includes('show me') || 
              commandLower.includes('get') || 
-             commandLower.includes('find')) {
+             commandLower.includes('find') ||
+             commandLower.includes('all locations') ||
+             commandLower.includes('list locations') ||
+             commandLower.includes('show locations') ||
+             commandLower.includes('give locations')) {
       action = 'collection_query';
     }
     else {
@@ -1490,12 +1496,6 @@ async function handleAdminCommand(command, user, phoneNumber) {
         try {
           // Import required modules
           const { generateMongoDBPipeline } = require('../../utils/aiService');
-          const User = require('../../models/User');
-          const Schedule = require('../../models/Schedule');
-          const Location = require('../../models/Location');
-          const Absence = require('../../models/Absence');
-          const Conversation = require('../../models/Conversation');
-          const HourTracking = require('../../models/HourTracking');
           
           // Collect all model schemas for the AI service
           const modelSchemas = {
@@ -2075,11 +2075,19 @@ You can use natural language - the system will understand your intent!`;
             userIdentifier = parts[0].trim();
             notifyMessage = parts[1].trim();
           } else {
-            // Extract first word as user and rest as message
-            const parts = afterNotify.split(' ');
-            if (parts.length >= 2) {
-              userIdentifier = parts[0].trim();
-              notifyMessage = parts.slice(1).join(' ').trim();
+            // Try to find a natural break point for user and message
+            // First check if there's a clear separator like a comma
+            const commaIndex = afterNotify.indexOf(',');
+            if (commaIndex > 0) {
+              userIdentifier = afterNotify.substring(0, commaIndex).trim();
+              notifyMessage = afterNotify.substring(commaIndex + 1).trim();
+            } else {
+              // Extract first word as user and rest as message
+              const parts = afterNotify.split(' ');
+              if (parts.length >= 2) {
+                userIdentifier = parts[0].trim();
+                notifyMessage = parts.slice(1).join(' ').trim();
+              }
             }
           }
         }
@@ -2166,7 +2174,6 @@ You can use natural language - the system will understand your intent!`;
       
       case 'absences':
         // Get pending absence requests
-        const Absence = require('../../models/Absence');
         const pendingAbsences = await Absence.find({ status: 'pending' })
           .populate('user', 'name department position')
           .sort({ startDate: 1 });
@@ -2200,7 +2207,7 @@ You can use natural language - the system will understand your intent!`;
         const approvePatterns = [
           /approve\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
           /accept\s+(?:absence|request)?\s*(?:with\s+id\s*)?([a-f0-9]{24})/i,
-          /approve\s+(?:the\s+)?(?:absence|request)\s*(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i
+          /approve\s+(?:the\s+)?(?:absence|request)\s+(?:from|by|for)\s+([\w\s]+)\s+(?:on|for|dated)\s+([\w\s,]+)/i
         ];
         
         // Try to extract absence ID using regex patterns

@@ -144,18 +144,45 @@ export const detectMultipleIntents = async (message) => {
 
     try {
       const content = response.choices?.[0]?.message?.content || '{"intents":["general_question"]}';
-      const result = JSON.parse(content);
-      // Check if result has intents property, otherwise assume the response itself is the array
-      if (Array.isArray(result)) {
-        return result;
-      } else if (result.intents && Array.isArray(result.intents)) {
-        return result.intents;
-      } else {
-        // If we can't parse the expected format, return default
+      
+      // Handle different response formats
+      try {
+        const result = JSON.parse(content);
+        // Check if result has intents property, otherwise assume the response itself is the array
+        if (Array.isArray(result)) {
+          return result;
+        } else if (result.intents && Array.isArray(result.intents)) {
+          return result.intents;
+        } else {
+          console.log("Unexpected response format in detectMultipleIntents:", content);
+          return ["general_question"];
+        }
+      } catch (parseError) {
+        console.error("JSON parsing error in detectMultipleIntents:", parseError.message);
+        
+        // Try to extract array from malformed JSON if possible
+        if (content.includes('[') && content.includes(']')) {
+          try {
+            const arrayMatch = content.match(/\[(.*?)\]/s);
+            if (arrayMatch && arrayMatch[1]) {
+              const items = arrayMatch[1].split(',').map(item => {
+                // Clean up and extract intent names
+                return item.trim().replace(/["']/g, '').trim();
+              }).filter(Boolean);
+              
+              if (items.length > 0) {
+                return items;
+              }
+            }
+          } catch (extractError) {
+            console.error("Failed to extract intents from malformed JSON:", extractError.message);
+          }
+        }
+        
         return ["general_question"];
       }
-    } catch (parseError) {
-      console.error("JSON parsing error in detectMultipleIntents:", parseError.message);
+    } catch (error) {
+      console.error("Error processing intent detection response:", error.message);
       return ["general_question"];
     }
   } catch (error) {
@@ -237,6 +264,10 @@ export const generateMongoDBPipeline = async (message, user, modelSchemas) => {
       4. For date-based queries, use proper MongoDB date operators.
       
       5. Always include appropriate $lookup stages to populate referenced fields when they would be useful for the query.
+      
+      6. For location queries (e.g., "all locations", "list locations", "show locations", "give locations"), use the location model and return all locations sorted by name.
+      
+      7. For absence approval queries, ensure the Absence model is used with appropriate filters for pending absences.
       
       Return a JSON object with:
       - model: The primary model name to query (lowercase, singular form as used in the schema)
