@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../../middleware/auth');
 const admin = require('../../middleware/admin');
 const axios = require('axios');
+const mongoose = require('mongoose');
 const User = require('../../models/User');
 const Schedule = require('../../models/Schedule');
 const Location = require('../../models/Location');
@@ -693,6 +694,33 @@ router.post('/webhook', async (req, res) => {
                 const command = messageContent.trim();
                 response = await handleAdminCommand(command, user, phoneNumber);
               }
+            } else if (intent === 'employee_query') {
+              // Handle employee queries about themselves
+              // This intent allows employees to query their own information
+              const queryParams = conversation.context.queryParams || {};
+              
+              // Determine what information the employee is requesting
+              const isProfileQuery = (
+                messageContent.toLowerCase().includes('my profile') ||
+                messageContent.toLowerCase().includes('my information') ||
+                messageContent.toLowerCase().includes('my details') ||
+                messageContent.toLowerCase().includes('my account') ||
+                messageContent.toLowerCase().includes('about me')
+              );
+              
+              if (isProfileQuery) {
+                // Return the employee's own profile information
+                response = `*Your Profile Information*\n\n`;
+                response += `Name: ${user.name}\n`;
+                response += `Role: ${user.role}\n`;
+                response += `Department: ${user.department || 'Not specified'}\n`;
+                response += `Position: ${user.position || 'Not specified'}\n`;
+                response += `Email: ${user.email || 'Not specified'}\n`;
+                response += `Phone: ${user.phone || 'Not specified'}\n`;
+              } else {
+                // Default response for employee queries
+                response = `Hello ${user.name}, what specific information would you like to know about your profile? You can ask about your details, schedules, or absences.`;
+              }
             } else if (intent === 'absence_request') {
               // Use query parameters from AI to determine absence details
               const queryParams = conversation.context.queryParams || {};
@@ -1337,6 +1365,29 @@ router.put('/settings', [auth, admin], async (req, res) => {
 // Admin command handler for WhatsApp
 async function handleAdminCommand(command, user, phoneNumber) {
   try {
+    // Check if user is admin - this is a secondary check as the route already checks
+    if (user.role !== 'admin') {
+      // For non-admin users, provide a way to query their own information
+      // Check if they're trying to query user information
+      const commandLower = command.toLowerCase();
+      if (commandLower.includes('my profile') || 
+          commandLower.includes('my information') || 
+          commandLower.includes('my details') || 
+          commandLower.includes('about me')) {
+        // Return the employee's own profile information
+        let response = `*Your Profile Information*\n\n`;
+        response += `Name: ${user.name}\n`;
+        response += `Role: ${user.role}\n`;
+        response += `Department: ${user.department || 'Not specified'}\n`;
+        response += `Position: ${user.position || 'Not specified'}\n`;
+        response += `Email: ${user.email || 'Not specified'}\n`;
+        response += `Phone: ${user.phone || 'Not specified'}\n`;
+        return response;
+      }
+      
+      return `You don't have permission to access this information. This feature requires administrator privileges.`;
+    }
+    
     // Process natural language admin commands
     // Extract command intent using NLP patterns
     const commandLower = command.toLowerCase();
@@ -1355,8 +1406,18 @@ async function handleAdminCommand(command, user, phoneNumber) {
     else if (commandLower.includes('users') || 
              commandLower.includes('show users') || 
              commandLower.includes('list users') || 
-             commandLower.includes('all users')) {
+             commandLower.includes('all users') ||
+             (commandLower.includes('tell me') && commandLower.includes('users')) ||
+             (commandLower.includes('users') && commandLower.includes('phone')) ||
+             (commandLower.includes('users') && commandLower.includes('number'))) {
       action = 'users';
+    }
+    // Specific user query detection
+    else if ((commandLower.includes('user') && (commandLower.includes('named') || commandLower.includes('about') || commandLower.includes('find') || commandLower.includes('get'))) ||
+             (commandLower.includes('tell me about') && !commandLower.includes('all')) ||
+             (commandLower.includes('show me') && commandLower.includes('user') && !commandLower.includes('all')) ||
+             (commandLower.includes('information') && commandLower.includes('user'))) {
+      action = 'user_query';
     }
     // Schedules command detection
     else if (commandLower.includes('schedules') || 
@@ -1402,6 +1463,19 @@ async function handleAdminCommand(command, user, phoneNumber) {
              commandLower.includes('decline')) {
       action = 'reject';
     }
+    // General collection query detection
+    else if (commandLower.includes('collection') || 
+             commandLower.includes('database') || 
+             commandLower.includes('model') || 
+             commandLower.includes('schema') || 
+             commandLower.includes('data') || 
+             commandLower.includes('information about') || 
+             commandLower.includes('tell me about') || 
+             commandLower.includes('show me') || 
+             commandLower.includes('get') || 
+             commandLower.includes('find')) {
+      action = 'collection_query';
+    }
     else {
       // Default to help if command not recognized
       return `I couldn't understand your admin command. Try asking for "admin help" to see available commands.`;
@@ -1412,6 +1486,245 @@ async function handleAdminCommand(command, user, phoneNumber) {
     
     // Handle different admin commands
     switch (action) {
+      case 'collection_query':
+        // Determine which collection the admin is asking about
+        let collectionName = '';
+        let queryFilter = {};
+        let limit = 10; // Default limit
+        
+        // Extract collection name from command
+        if (commandLower.includes('user') || commandLower.includes('employee') || commandLower.includes('admin')) {
+          collectionName = 'user';
+        } else if (commandLower.includes('schedule') || commandLower.includes('appointment') || commandLower.includes('event')) {
+          collectionName = 'schedule';
+        } else if (commandLower.includes('location') || commandLower.includes('place') || commandLower.includes('address')) {
+          collectionName = 'location';
+        } else if (commandLower.includes('absence') || commandLower.includes('time off') || commandLower.includes('leave')) {
+          collectionName = 'absence';
+        } else if (commandLower.includes('conversation')) {
+          collectionName = 'conversation';
+        } else {
+          // If no specific collection mentioned, try to infer from other keywords
+          if (commandLower.includes('name') || commandLower.includes('phone') || commandLower.includes('email') || commandLower.includes('role')) {
+            collectionName = 'user';
+          } else if (commandLower.includes('date') || commandLower.includes('time') || commandLower.includes('title')) {
+            collectionName = 'schedule';
+          } else if (commandLower.includes('city') || commandLower.includes('address') || commandLower.includes('coordinates')) {
+            collectionName = 'location';
+          } else if (commandLower.includes('sick') || commandLower.includes('vacation') || commandLower.includes('personal leave')) {
+            collectionName = 'absence';
+          } else {
+            // Default to user if we can't determine
+            collectionName = 'user';
+          }
+        }
+        
+        // Extract specific filters if any
+        if (collectionName === 'user') {
+          // Check for specific user filters
+          if (commandLower.includes('admin')) {
+            queryFilter.role = 'admin';
+          } else if (commandLower.includes('employee') && !commandLower.includes('all')) {
+            queryFilter.role = 'employee';
+          }
+          
+          // Department filter
+          if (commandLower.includes('department')) {
+            const deptIndex = commandLower.indexOf('department');
+            const deptText = command.substring(deptIndex + 'department'.length).trim();
+            if (deptText && deptText.length > 0) {
+              // Extract department name - simple approach
+              const deptName = deptText.split(' ')[0];
+              if (deptName && deptName.length > 0) {
+                queryFilter.department = { $regex: deptName, $options: 'i' };
+              }
+            }
+          }
+        } else if (collectionName === 'schedule') {
+          // Check for date filters
+          if (commandLower.includes('today')) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            queryFilter.date = { $gte: today, $lt: tomorrow };
+          } else if (commandLower.includes('tomorrow')) {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 0, 0);
+            const dayAfter = new Date(tomorrow);
+            dayAfter.setDate(dayAfter.getDate() + 1);
+            queryFilter.date = { $gte: tomorrow, $lt: dayAfter };
+          } else if (commandLower.includes('this week')) {
+            const today = new Date();
+            const dayOfWeek = today.getDay();
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - dayOfWeek);
+            startOfWeek.setHours(0, 0, 0, 0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 7);
+            queryFilter.date = { $gte: startOfWeek, $lt: endOfWeek };
+          }
+        } else if (collectionName === 'absence') {
+          // Check for status filters
+          if (commandLower.includes('pending')) {
+            queryFilter.status = 'pending';
+          } else if (commandLower.includes('approved')) {
+            queryFilter.status = 'approved';
+          } else if (commandLower.includes('rejected')) {
+            queryFilter.status = 'rejected';
+          }
+          
+          // Check for type filters
+          if (commandLower.includes('sick')) {
+            queryFilter.type = 'sick';
+          } else if (commandLower.includes('vacation')) {
+            queryFilter.type = 'vacation';
+          } else if (commandLower.includes('personal')) {
+            queryFilter.type = 'personal';
+          }
+        }
+        
+        // Get the appropriate model
+        let Model;
+        let populateFields = [];
+        
+        switch (collectionName) {
+          case 'user':
+            Model = User;
+            break;
+          case 'schedule':
+            Model = Schedule;
+            populateFields = ['location', 'assignedEmployees'];
+            break;
+          case 'location':
+            Model = Location;
+            populateFields = ['createdBy'];
+            break;
+          case 'absence':
+            Model = require('../../models/Absence');
+            populateFields = ['user', 'schedule'];
+            break;
+          case 'conversation':
+            Model = Conversation;
+            populateFields = ['user'];
+            break;
+          default:
+            return 'I could not determine which collection you want to query. Please specify a collection like users, schedules, locations, or absences.';
+        }
+        
+        try {
+          // Check if user is an admin - if not, restrict query to only their own data
+          if (user.role !== 'admin') {
+            // For non-admin users, restrict access to only their own data
+            if (collectionName === 'user') {
+              // Only allow querying their own user record
+              queryFilter._id = user._id;
+            } else if (collectionName === 'schedule') {
+              // Only allow querying schedules they're assigned to
+              queryFilter.assignedEmployees = user._id;
+            } else if (collectionName === 'absence') {
+              // Only allow querying their own absences
+              queryFilter.user = user._id;
+            } else if (collectionName === 'conversation') {
+              // Only allow querying their own conversations
+              queryFilter.user = user._id;
+            } else {
+              // For other collections, return unauthorized message
+              return `You don't have permission to access ${collectionName} data. This feature requires administrator privileges.`;
+            }
+          }
+          
+          // Execute the query
+          let query = Model.find(queryFilter).limit(limit);
+          
+          // Add population if needed
+          if (populateFields.length > 0) {
+            populateFields.forEach(field => {
+              query = query.populate(field);
+            });
+          }
+          
+          const results = await query.exec();
+          
+          if (results.length === 0) {
+            return `No ${collectionName} records found matching your query.`;
+          }
+          
+          // Format the response based on the collection
+          let response = `*${collectionName.charAt(0).toUpperCase() + collectionName.slice(1)} Query Results*\n\n`;
+          
+          switch (collectionName) {
+            case 'user':
+              results.forEach((u, index) => {
+                response += `${index + 1}. ${u.name} (${u.role})\n`;
+                response += `   ID: ${u._id}\n`;
+                response += `   Dept: ${u.department || 'N/A'}\n`;
+                response += `   Phone: ${u.phone || 'N/A'}\n\n`;
+              });
+              break;
+              
+            case 'schedule':
+              results.forEach((s, index) => {
+                const date = new Date(s.date).toLocaleDateString();
+                const startTime = new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const endTime = new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                response += `${index + 1}. ${s.title}\n`;
+                response += `   Date: ${date}\n`;
+                response += `   Time: ${startTime} - ${endTime}\n`;
+                
+                if (s.location && typeof s.location === 'object') {
+                  response += `   Location: ${s.location.name}\n`;
+                }
+                
+                if (s.assignedEmployees && s.assignedEmployees.length > 0) {
+                  response += `   Assigned: ${s.assignedEmployees.map(e => e.name || e).join(', ')}\n`;
+                }
+                
+                response += `\n`;
+              });
+              break;
+              
+            case 'location':
+              results.forEach((l, index) => {
+                response += `${index + 1}. ${l.name}\n`;
+                response += `   Address: ${l.address}, ${l.city}, ${l.state} ${l.zipCode}\n`;
+                response += `   Coordinates: ${l.coordinates.latitude}, ${l.coordinates.longitude}\n\n`;
+              });
+              break;
+              
+            case 'absence':
+              results.forEach((a, index) => {
+                const startDate = new Date(a.startDate).toLocaleDateString();
+                const endDate = new Date(a.endDate).toLocaleDateString();
+                
+                response += `${index + 1}. ${a.user && typeof a.user === 'object' ? a.user.name : 'Unknown User'}\n`;
+                response += `   Type: ${a.type}\n`;
+                response += `   Dates: ${startDate} to ${endDate}\n`;
+                response += `   Status: ${a.status}\n`;
+                response += `   Reason: ${a.reason}\n\n`;
+              });
+              break;
+              
+            case 'conversation':
+              results.forEach((c, index) => {
+                const lastUpdated = new Date(c.updatedAt).toLocaleString();
+                
+                response += `${index + 1}. Conversation ID: ${c._id}\n`;
+                response += `   User: ${c.user && typeof c.user === 'object' ? c.user.name : 'Unknown User'}\n`;
+                response += `   Active: ${c.active ? 'Yes' : 'No'}\n`;
+                response += `   Last Updated: ${lastUpdated}\n\n`;
+              });
+              break;
+          }
+          
+          return response;
+        } catch (err) {
+          console.error(`Collection query error:`, err);
+          return `Error querying ${collectionName} collection: ${err.message}`;
+        }
+        
       case 'help':
         return `*Available Admin Commands:*
 
@@ -1452,6 +1765,75 @@ You can use natural language - the system will understand your intent!`;
         });
         
         return userList;
+        
+      case 'user_query':
+        // Extract user name from the command
+        let userName = '';
+        
+        // Pattern: "user named X" or "user X"
+        if (commandLower.includes('named')) {
+          const namedIndex = commandLower.indexOf('named');
+          userName = command.substring(namedIndex + 'named'.length).trim();
+        } 
+        // Pattern: "about user X" or "about X"
+        else if (commandLower.includes('about')) {
+          const aboutIndex = commandLower.indexOf('about');
+          userName = command.substring(aboutIndex + 'about'.length).trim();
+        }
+        // Pattern: "find user X" or "get user X"
+        else if (commandLower.includes('find user') || commandLower.includes('get user')) {
+          const findIndex = commandLower.includes('find user') ? 
+            commandLower.indexOf('find user') + 'find user'.length : 
+            commandLower.indexOf('get user') + 'get user'.length;
+          userName = command.substring(findIndex).trim();
+        }
+        // Pattern: "tell me about X"
+        else if (commandLower.includes('tell me about')) {
+          const tellIndex = commandLower.indexOf('tell me about');
+          userName = command.substring(tellIndex + 'tell me about'.length).trim();
+        }
+        // Pattern: "show me user X"
+        else if (commandLower.includes('show me user')) {
+          const showIndex = commandLower.indexOf('show me user');
+          userName = command.substring(showIndex + 'show me user'.length).trim();
+        }
+        // Pattern: "information about user X"
+        else if (commandLower.includes('information about user')) {
+          const infoIndex = commandLower.indexOf('information about user');
+          userName = command.substring(infoIndex + 'information about user'.length).trim();
+        }
+        // Fallback: try to extract the last word as the user name
+        else {
+          const words = command.split(' ');
+          userName = words[words.length - 1];
+        }
+        
+        // Clean up the extracted name
+        userName = userName.replace(/^[\s,.]+|[\s,.]+$/g, ''); // Remove leading/trailing spaces and punctuation
+        
+        if (!userName) {
+          return 'Please specify a user name. For example: "Tell me about user John" or "Find user named Sarah".';
+        }
+        
+        // Find the user by name (case-insensitive partial match)
+        const user = await User.findOne({ 
+          name: { $regex: userName, $options: 'i' } 
+        }).select('name email phone role department position');
+        
+        if (!user) {
+          return `No user found with name containing "${userName}". Please try again with a different name.`;
+        }
+        
+        // Format user details
+        let userDetails = `*User Details: ${user.name}*\n\n`;
+        userDetails += `ID: ${user._id}\n`;
+        userDetails += `Role: ${user.role}\n`;
+        userDetails += `Department: ${user.department || 'N/A'}\n`;
+        userDetails += `Position: ${user.position || 'N/A'}\n`;
+        userDetails += `Email: ${user.email || 'N/A'}\n`;
+        userDetails += `Phone: ${user.phone || 'N/A'}\n`;
+        
+        return userDetails;
       
       case 'schedules':
         // Check if admin is requesting all schedules regardless of date

@@ -142,8 +142,22 @@ export const detectMultipleIntents = async (message) => {
       max_tokens: 100,
     });
 
-    const result = JSON.parse(response.choices?.[0]?.message?.content || '{"intents":["general_question"]}');
-    return result.intents || ["general_question"];
+    try {
+      const content = response.choices?.[0]?.message?.content || '{"intents":["general_question"]}';
+      const result = JSON.parse(content);
+      // Check if result has intents property, otherwise assume the response itself is the array
+      if (Array.isArray(result)) {
+        return result;
+      } else if (result.intents && Array.isArray(result.intents)) {
+        return result.intents;
+      } else {
+        // If we can't parse the expected format, return default
+        return ["general_question"];
+      }
+    } catch (parseError) {
+      console.error("JSON parsing error in detectMultipleIntents:", parseError.message);
+      return ["general_question"];
+    }
   } catch (error) {
     console.error("Multiple intent detection error:", error.message);
     return ["general_question"]; // Default to general question if detection fails
