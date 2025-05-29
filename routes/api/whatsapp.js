@@ -1487,165 +1487,81 @@ async function handleAdminCommand(command, user, phoneNumber) {
     // Handle different admin commands
     switch (action) {
       case 'collection_query':
-        // Determine which collection the admin is asking about
-        let collectionName = '';
-        let queryFilter = {};
-        let limit = 10; // Default limit
-        
-        // Extract collection name from command
-        if (commandLower.includes('user') || commandLower.includes('employee') || commandLower.includes('admin')) {
-          collectionName = 'user';
-        } else if (commandLower.includes('schedule') || commandLower.includes('appointment') || commandLower.includes('event')) {
-          collectionName = 'schedule';
-        } else if (commandLower.includes('location') || commandLower.includes('place') || commandLower.includes('address')) {
-          collectionName = 'location';
-        } else if (commandLower.includes('absence') || commandLower.includes('time off') || commandLower.includes('leave')) {
-          collectionName = 'absence';
-        } else if (commandLower.includes('conversation')) {
-          collectionName = 'conversation';
-        } else {
-          // If no specific collection mentioned, try to infer from other keywords
-          if (commandLower.includes('name') || commandLower.includes('phone') || commandLower.includes('email') || commandLower.includes('role')) {
-            collectionName = 'user';
-          } else if (commandLower.includes('date') || commandLower.includes('time') || commandLower.includes('title')) {
-            collectionName = 'schedule';
-          } else if (commandLower.includes('city') || commandLower.includes('address') || commandLower.includes('coordinates')) {
-            collectionName = 'location';
-          } else if (commandLower.includes('sick') || commandLower.includes('vacation') || commandLower.includes('personal leave')) {
-            collectionName = 'absence';
-          } else {
-            // Default to user if we can't determine
-            collectionName = 'user';
-          }
-        }
-        
-        // Extract specific filters if any
-        if (collectionName === 'user') {
-          // Check for specific user filters
-          if (commandLower.includes('admin')) {
-            queryFilter.role = 'admin';
-          } else if (commandLower.includes('employee') && !commandLower.includes('all')) {
-            queryFilter.role = 'employee';
-          }
-          
-          // Department filter
-          if (commandLower.includes('department')) {
-            const deptIndex = commandLower.indexOf('department');
-            const deptText = command.substring(deptIndex + 'department'.length).trim();
-            if (deptText && deptText.length > 0) {
-              // Extract department name - simple approach
-              const deptName = deptText.split(' ')[0];
-              if (deptName && deptName.length > 0) {
-                queryFilter.department = { $regex: deptName, $options: 'i' };
-              }
-            }
-          }
-        } else if (collectionName === 'schedule') {
-          // Check for date filters
-          if (commandLower.includes('today')) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const tomorrow = new Date(today);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            queryFilter.date = { $gte: today, $lt: tomorrow };
-          } else if (commandLower.includes('tomorrow')) {
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(0, 0, 0, 0);
-            const dayAfter = new Date(tomorrow);
-            dayAfter.setDate(dayAfter.getDate() + 1);
-            queryFilter.date = { $gte: tomorrow, $lt: dayAfter };
-          } else if (commandLower.includes('this week')) {
-            const today = new Date();
-            const dayOfWeek = today.getDay();
-            const startOfWeek = new Date(today);
-            startOfWeek.setDate(today.getDate() - dayOfWeek);
-            startOfWeek.setHours(0, 0, 0, 0);
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 7);
-            queryFilter.date = { $gte: startOfWeek, $lt: endOfWeek };
-          }
-        } else if (collectionName === 'absence') {
-          // Check for status filters
-          if (commandLower.includes('pending')) {
-            queryFilter.status = 'pending';
-          } else if (commandLower.includes('approved')) {
-            queryFilter.status = 'approved';
-          } else if (commandLower.includes('rejected')) {
-            queryFilter.status = 'rejected';
-          }
-          
-          // Check for type filters
-          if (commandLower.includes('sick')) {
-            queryFilter.type = 'sick';
-          } else if (commandLower.includes('vacation')) {
-            queryFilter.type = 'vacation';
-          } else if (commandLower.includes('personal')) {
-            queryFilter.type = 'personal';
-          }
-        }
-        
-        // Get the appropriate model
-        let Model;
-        let populateFields = [];
-        
-        switch (collectionName) {
-          case 'user':
-            Model = User;
-            break;
-          case 'schedule':
-            Model = Schedule;
-            populateFields = ['location', 'assignedEmployees'];
-            break;
-          case 'location':
-            Model = Location;
-            populateFields = ['createdBy'];
-            break;
-          case 'absence':
-            Model = require('../../models/Absence');
-            populateFields = ['user', 'schedule'];
-            break;
-          case 'conversation':
-            Model = Conversation;
-            populateFields = ['user'];
-            break;
-          default:
-            return 'I could not determine which collection you want to query. Please specify a collection like users, schedules, locations, or absences.';
-        }
-        
         try {
-          // Check if user is an admin - if not, restrict query to only their own data
-          if (user.role !== 'admin') {
-            // For non-admin users, restrict access to only their own data
-            if (collectionName === 'user') {
-              // Only allow querying their own user record
-              queryFilter._id = user._id;
-            } else if (collectionName === 'schedule') {
-              // Only allow querying schedules they're assigned to
-              queryFilter.assignedEmployees = user._id;
-            } else if (collectionName === 'absence') {
-              // Only allow querying their own absences
-              queryFilter.user = user._id;
-            } else if (collectionName === 'conversation') {
-              // Only allow querying their own conversations
-              queryFilter.user = user._id;
-            } else {
-              // For other collections, return unauthorized message
-              return `You don't have permission to access ${collectionName} data. This feature requires administrator privileges.`;
-            }
+          // Import required modules
+          const { generateMongoDBPipeline } = require('../../utils/aiService');
+          const User = require('../../models/User');
+          const Schedule = require('../../models/Schedule');
+          const Location = require('../../models/Location');
+          const Absence = require('../../models/Absence');
+          const Conversation = require('../../models/Conversation');
+          const HourTracking = require('../../models/HourTracking');
+          
+          // Collect all model schemas for the AI service
+          const modelSchemas = {
+            user: User,
+            schedule: Schedule,
+            location: Location,
+            absence: Absence,
+            conversation: Conversation,
+            hourTracking: HourTracking
+          };
+          
+          console.log(`Processing collection query with AI: "${command}"`);
+          
+          // Generate MongoDB aggregation pipeline using Azure OpenAI
+          const pipelineResult = await generateMongoDBPipeline(command, user, modelSchemas);
+          
+          // Handle unclear queries
+          if (pipelineResult.unclear) {
+            return `I'm not sure what you're asking for. Could you please be more specific about which data you want to query?`;
           }
           
-          // Execute the query
-          let query = Model.find(queryFilter).limit(limit);
-          
-          // Add population if needed
-          if (populateFields.length > 0) {
-            populateFields.forEach(field => {
-              query = query.populate(field);
-            });
+          // Handle errors in pipeline generation
+          if (pipelineResult.error) {
+            console.error('Pipeline generation error:', pipelineResult.message);
+            return `I encountered an error while processing your query: ${pipelineResult.message}`;
           }
           
-          const results = await query.exec();
+          // Get the primary model to query
+          const modelName = pipelineResult.model;
+          const pipeline = pipelineResult.pipeline;
+          
+          if (!modelName || !pipeline) {
+            return `I couldn't determine what you're asking for. Please try rephrasing your query.`;
+          }
+          
+          // Get the appropriate model
+          let Model;
+          let collectionName = modelName;
+          
+          switch (modelName) {
+            case 'user':
+              Model = User;
+              break;
+            case 'schedule':
+              Model = Schedule;
+              break;
+            case 'location':
+              Model = Location;
+              break;
+            case 'absence':
+              Model = Absence;
+              break;
+            case 'conversation':
+              Model = Conversation;
+              break;
+            case 'hourTracking':
+              Model = HourTracking;
+              break;
+            default:
+              return `I don't recognize the collection "${modelName}". Please specify a valid collection like users, schedules, locations, or absences.`;
+          }
+          
+          console.log(`Executing aggregation pipeline for ${modelName}:`, JSON.stringify(pipeline));
+          
+          // Execute the aggregation pipeline
+          const results = await Model.aggregate(pipeline).exec();
           
           if (results.length === 0) {
             return `No ${collectionName} records found matching your query.`;
@@ -1657,29 +1573,39 @@ async function handleAdminCommand(command, user, phoneNumber) {
           switch (collectionName) {
             case 'user':
               results.forEach((u, index) => {
-                response += `${index + 1}. ${u.name} (${u.role})\n`;
+                response += `${index + 1}. ${u.name} (${u.role || 'N/A'})\n`;
                 response += `   ID: ${u._id}\n`;
                 response += `   Dept: ${u.department || 'N/A'}\n`;
+                response += `   Position: ${u.position || 'N/A'}\n`;
+                response += `   Email: ${u.email || 'N/A'}\n`;
                 response += `   Phone: ${u.phone || 'N/A'}\n\n`;
               });
               break;
               
             case 'schedule':
               results.forEach((s, index) => {
-                const date = new Date(s.date).toLocaleDateString();
-                const startTime = new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const endTime = new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const date = s.date ? new Date(s.date).toLocaleDateString() : 'N/A';
+                const startTime = s.startTime ? new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+                const endTime = s.endTime ? new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
                 
-                response += `${index + 1}. ${s.title}\n`;
+                response += `${index + 1}. ${s.title || 'Untitled'}\n`;
                 response += `   Date: ${date}\n`;
                 response += `   Time: ${startTime} - ${endTime}\n`;
                 
-                if (s.location && typeof s.location === 'object') {
-                  response += `   Location: ${s.location.name}\n`;
+                if (s.location) {
+                  if (typeof s.location === 'object' && s.location.name) {
+                    response += `   Location: ${s.location.name}\n`;
+                  } else if (typeof s.location === 'string') {
+                    response += `   Location ID: ${s.location}\n`;
+                  }
                 }
                 
                 if (s.assignedEmployees && s.assignedEmployees.length > 0) {
-                  response += `   Assigned: ${s.assignedEmployees.map(e => e.name || e).join(', ')}\n`;
+                  const employeeNames = s.assignedEmployees.map(e => {
+                    if (typeof e === 'object' && e.name) return e.name;
+                    return e;
+                  }).join(', ');
+                  response += `   Assigned: ${employeeNames}\n`;
                 }
                 
                 response += `\n`;
@@ -1688,41 +1614,145 @@ async function handleAdminCommand(command, user, phoneNumber) {
               
             case 'location':
               results.forEach((l, index) => {
-                response += `${index + 1}. ${l.name}\n`;
-                response += `   Address: ${l.address}, ${l.city}, ${l.state} ${l.zipCode}\n`;
-                response += `   Coordinates: ${l.coordinates.latitude}, ${l.coordinates.longitude}\n\n`;
+                response += `${index + 1}. ${l.name || 'Unnamed Location'}\n`;
+                response += `   Address: ${l.address || 'N/A'}, ${l.city || 'N/A'}, ${l.state || 'N/A'} ${l.zipCode || 'N/A'}\n`;
+                if (l.coordinates) {
+                  response += `   Coordinates: ${l.coordinates.latitude || 'N/A'}, ${l.coordinates.longitude || 'N/A'}\n`;
+                }
+                if (l.createdBy) {
+                  if (typeof l.createdBy === 'object' && l.createdBy.name) {
+                    response += `   Created By: ${l.createdBy.name}\n`;
+                  } else if (typeof l.createdBy === 'string') {
+                    response += `   Created By ID: ${l.createdBy}\n`;
+                  }
+                }
+                response += `\n`;
               });
               break;
               
             case 'absence':
               results.forEach((a, index) => {
-                const startDate = new Date(a.startDate).toLocaleDateString();
-                const endDate = new Date(a.endDate).toLocaleDateString();
+                const startDate = a.startDate ? new Date(a.startDate).toLocaleDateString() : 'N/A';
+                const endDate = a.endDate ? new Date(a.endDate).toLocaleDateString() : 'N/A';
                 
-                response += `${index + 1}. ${a.user && typeof a.user === 'object' ? a.user.name : 'Unknown User'}\n`;
-                response += `   Type: ${a.type}\n`;
+                let userName = 'Unknown User';
+                if (a.user) {
+                  if (typeof a.user === 'object' && a.user.name) {
+                    userName = a.user.name;
+                  } else if (typeof a.user === 'string') {
+                    userName = `User ID: ${a.user}`;
+                  }
+                }
+                
+                response += `${index + 1}. ${userName}\n`;
+                response += `   Type: ${a.type || 'N/A'}\n`;
                 response += `   Dates: ${startDate} to ${endDate}\n`;
-                response += `   Status: ${a.status}\n`;
-                response += `   Reason: ${a.reason}\n\n`;
+                response += `   Status: ${a.status || 'N/A'}\n`;
+                response += `   Reason: ${a.reason || 'N/A'}\n\n`;
               });
               break;
               
             case 'conversation':
               results.forEach((c, index) => {
-                const lastUpdated = new Date(c.updatedAt).toLocaleString();
+                const lastUpdated = c.updatedAt ? new Date(c.updatedAt).toLocaleString() : 'N/A';
+                
+                let userName = 'Unknown User';
+                if (c.user) {
+                  if (typeof c.user === 'object' && c.user.name) {
+                    userName = c.user.name;
+                  } else if (typeof c.user === 'string') {
+                    userName = `User ID: ${c.user}`;
+                  }
+                }
                 
                 response += `${index + 1}. Conversation ID: ${c._id}\n`;
-                response += `   User: ${c.user && typeof c.user === 'object' ? c.user.name : 'Unknown User'}\n`;
+                response += `   User: ${userName}\n`;
+                response += `   Platform: ${c.platform || 'N/A'}\n`;
                 response += `   Active: ${c.active ? 'Yes' : 'No'}\n`;
                 response += `   Last Updated: ${lastUpdated}\n\n`;
               });
               break;
+              
+            case 'hourTracking':
+              results.forEach((h, index) => {
+                const date = h.date ? new Date(h.date).toLocaleDateString() : 'N/A';
+                const clockIn = h.clockInTime ? new Date(h.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+                const clockOut = h.clockOutTime ? new Date(h.clockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+                
+                let userName = 'Unknown User';
+                if (h.user) {
+                  if (typeof h.user === 'object' && h.user.name) {
+                    userName = h.user.name;
+                  } else if (typeof h.user === 'string') {
+                    userName = `User ID: ${h.user}`;
+                  }
+                }
+                
+                response += `${index + 1}. ${userName}\n`;
+                response += `   Date: ${date}\n`;
+                response += `   Clock In: ${clockIn}\n`;
+                response += `   Clock Out: ${clockOut}\n`;
+                response += `   Total Hours: ${h.totalHours || 'N/A'}\n\n`;
+              });
+              break;
+              
+            default:
+              // Generic formatter for any other collection
+              results.forEach((item, index) => {
+                response += `${index + 1}. ID: ${item._id}\n`;
+                
+                // Display up to 5 key properties
+                const keys = Object.keys(item).filter(k => k !== '_id' && k !== '__v').slice(0, 5);
+                keys.forEach(key => {
+                  const value = item[key];
+                  if (value !== null && value !== undefined) {
+                    if (typeof value === 'object' && value instanceof Date) {
+                      response += `   ${key}: ${value.toLocaleString()}\n`;
+                    } else if (typeof value !== 'object') {
+                      response += `   ${key}: ${value}\n`;
+                    } else if (value._id) {
+                      response += `   ${key} ID: ${value._id}\n`;
+                    }
+                  }
+                });
+                
+                response += `\n`;
+              });
+          }
+          
+          // Process additional models if any
+          if (pipelineResult.additionalModels && pipelineResult.additionalModels.length > 0) {
+            for (const additionalQuery of pipelineResult.additionalModels) {
+              const additionalModelName = additionalQuery.model;
+              const additionalPipeline = additionalQuery.pipeline;
+              
+              if (!additionalModelName || !additionalPipeline) continue;
+              
+              let AdditionalModel;
+              switch (additionalModelName) {
+                case 'user': AdditionalModel = User; break;
+                case 'schedule': AdditionalModel = Schedule; break;
+                case 'location': AdditionalModel = Location; break;
+                case 'absence': AdditionalModel = Absence; break;
+                case 'conversation': AdditionalModel = Conversation; break;
+                case 'hourTracking': AdditionalModel = HourTracking; break;
+                default: continue;
+              }
+              
+              const additionalResults = await AdditionalModel.aggregate(additionalPipeline).exec();
+              
+              if (additionalResults.length > 0) {
+                response += `\n*Related ${additionalModelName.charAt(0).toUpperCase() + additionalModelName.slice(1)} Results*\n\n`;
+                response += `Found ${additionalResults.length} related records.\n`;
+                // We don't format these in detail to keep the response concise
+              }
+            }
           }
           
           return response;
         } catch (err) {
-          console.error(`Collection query error:`, err);
-          return `Error querying ${collectionName} collection: ${err.message}`;
+          console.error(`AI-powered collection query error:`, err);
+          return `Error processing your query: ${err.message}. Please try again with a more specific query.`;
         }
         
       case 'help':

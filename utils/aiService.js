@@ -163,3 +163,121 @@ export const detectMultipleIntents = async (message) => {
     return ["general_question"]; // Default to general question if detection fails
   }
 };
+
+/**
+ * Generate MongoDB aggregation pipeline from natural language using Azure OpenAI
+ * @param {string} message - User message
+ * @param {Object} user - User context
+ * @param {Object} modelSchemas - Object containing all available Mongoose model schemas
+ * @returns {Promise<Object>} - Object with model name and aggregation pipeline
+ */
+export const generateMongoDBPipeline = async (message, user, modelSchemas) => {
+  try {
+    const client = createOpenAIClient();
+    const deploymentId = process.env.AZURE_OPENAI_DEPLOYMENT_ID || "gpt-4o";
+
+    // Convert model schemas to a simplified format for the prompt
+    const simplifiedSchemas = {};
+    for (const [modelName, schema] of Object.entries(modelSchemas)) {
+      simplifiedSchemas[modelName] = {};
+      const paths = schema.schema.paths;
+      for (const [pathName, pathConfig] of Object.entries(paths)) {
+        // Skip internal Mongoose fields
+        if (pathName.startsWith('_')) continue;
+        
+        // Get the type and reference information
+        let fieldType = pathConfig.instance;
+        let refModel = null;
+        
+        if (pathConfig.options && pathConfig.options.ref) {
+          refModel = pathConfig.options.ref;
+        }
+        
+        // Handle array types
+        if (fieldType === 'Array' && pathConfig.schema) {
+          fieldType = 'Array of Objects';
+        } else if (fieldType === 'Array' && pathConfig.caster && pathConfig.caster.options && pathConfig.caster.options.ref) {
+          fieldType = `Array of ${pathConfig.caster.options.ref} references`;
+          refModel = pathConfig.caster.options.ref;
+        }
+        
+        simplifiedSchemas[modelName][pathName] = {
+          type: fieldType,
+          ref: refModel,
+          enum: pathConfig.enumValues || null,
+          required: pathConfig.isRequired || false
+        };
+      }
+    }
+
+    // Create a system message that explains the task and provides the schema information
+    const systemMessage = {
+      role: "system",
+      content: `You are a MongoDB aggregation pipeline generator for an Employee Scheduling System.
+      
+      Your task is to convert natural language queries into MongoDB aggregation pipelines.
+      
+      Here are the available models and their schemas:
+      ${JSON.stringify(simplifiedSchemas, null, 2)}
+      
+      Based on the user's query, determine which model(s) to query and generate the appropriate MongoDB aggregation pipeline.
+      
+      IMPORTANT RULES:
+      1. If the user is not an admin (role is not 'admin'), restrict results to only their own data by adding appropriate filters:
+         - For User model: _id must match the user's ID (${user._id})
+         - For Schedule model: assignedEmployees must include the user's ID
+         - For Absence model: user field must match the user's ID
+         - For HourTracking model: user field must match the user's ID
+         - For Conversation model: user field must match the user's ID
+      
+      2. If the user is an admin, return full results based on the query without these restrictions.
+      
+      3. If the query is unclear or ambiguous, return null for both model and pipeline.
+      
+      4. For date-based queries, use proper MongoDB date operators.
+      
+      5. Always include appropriate $lookup stages to populate referenced fields when they would be useful for the query.
+      
+      Return a JSON object with:
+      - model: The primary model name to query (lowercase, singular form as used in the schema)
+      - pipeline: The MongoDB aggregation pipeline array
+      - additionalModels: Optional array of objects with {model, pipeline} for additional queries if needed
+      
+      If multiple models need to be queried separately, include them in the additionalModels array.`
+    };
+
+    const userMessage = {
+      role: "user",
+      content: `User role: ${user.role}\nUser ID: ${user._id}\nQuery: ${message}`
+    };
+
+    const messages = [systemMessage, userMessage];
+
+    const response = await client.chat.completions.create({
+      model: deploymentId,
+      messages,
+      temperature: 0.1, // Low temperature for more deterministic responses
+      response_format: { type: "json_object" },
+      max_tokens: 2000,
+    });
+
+    try {
+      const content = response.choices?.[0]?.message?.content || '{}';
+      const result = JSON.parse(content);
+      
+      // Validate the response structure
+      if (!result.model && !result.pipeline && (!result.additionalModels || result.additionalModels.length === 0)) {
+        console.log("Query unclear, returning null");
+        return { unclear: true, message: "Your message is not clear. Please specify exactly what you want." };
+      }
+      
+      return result;
+    } catch (parseError) {
+      console.error("JSON parsing error in generateMongoDBPipeline:", parseError.message);
+      return { error: true, message: "Error parsing the generated pipeline." };
+    }
+  } catch (error) {
+    console.error("MongoDB pipeline generation error:", error.message);
+    return { error: true, message: "Error generating the MongoDB pipeline." };
+  }
+};
