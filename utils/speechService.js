@@ -1,96 +1,113 @@
-const axios = require('axios');
-const { SpeechConfig, AudioConfig, SpeechRecognizer, ResultReason } = require('microsoft-cognitiveservices-speech-sdk');
+const sdk = require('microsoft-cognitiveservices-speech-sdk');
+const winston = require('winston');
+const { Readable } = require('stream');
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path; // Correct package
+const fs = require('fs');
 
-/**
- * Convert speech to text using Azure Speech Services
- * @param {string} audioUrl - URL to the audio file
- * @returns {Promise<string>} - Transcribed text
- */
-/**
- * Convert speech to text using Azure Speech Services
- * @param {Buffer|ArrayBuffer} audioData - Binary audio data
- * @returns {Promise<string>} - Transcribed text
- */
-const convertSpeechToText = async (audioData) => {
+ffmpeg.setFfmpegPath(ffmpegPath);
+
+// Logger setup
+const logger = winston.createLogger({
+  level: 'debug',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.File({ filename: 'logs/speechService.log' }),
+    new winston.transports.Console()
+  ]
+});
+
+const createSpeechClient = () => {
+  const subscriptionKey = process.env.AZURE_SPEECH_KEY;
+  const region = process.env.AZURE_SPEECH_REGION;
+
+  if (!subscriptionKey || !region) {
+    logger.error('Azure Speech credentials missing');
+    throw new Error('Azure Speech credentials not configured');
+  }
+
+  const speechConfig = sdk.SpeechConfig.fromSubscription(subscriptionKey, region);
+  speechConfig.speechRecognitionLanguage = 'en-US';
+  return speechConfig;
+};
+
+const convertToWav = (audioBuffer) => {
+  return new Promise((resolve, reject) => {
+    const inputStream = Readable.from(audioBuffer);
+    const outputPath = `/tmp/audio_${Date.now()}.wav`;
+
+    logger.debug('Converting audio to WAV', { bufferSize: audioBuffer.length });
+
+    ffmpeg(inputStream)
+      .inputFormat('ogg') // WhatsApp voice messages are typically OGG
+      .audioCodec('pcm_s16le')
+      .audioFrequency(16000)
+      .audioChannels(1)
+      .format('wav')
+      .on('error', (err) => {
+        logger.error('FFmpeg conversion error', { error: err.message });
+        reject(new Error('Audio conversion failed'));
+      })
+      .on('end', () => {
+        logger.info('Audio converted to WAV', { outputPath });
+        const wavBuffer = fs.readFileSync(outputPath);
+        fs.unlinkSync(outputPath); // Clean up
+        resolve(wavBuffer);
+      })
+      .save(outputPath);
+  });
+};
+
+exports.convertSpeechToText = async (audioBuffer) => {
   try {
-    console.log('Processing voice message with Azure Speech Services');
-    
-    // Configure speech service
-    const speechKey = process.env.AZURE_SPEECH_KEY;
-    const speechRegion = process.env.AZURE_SPEECH_REGION;
-    
-    if (!speechKey || !speechRegion) {
-      throw new Error('Azure Speech Services credentials not configured');
-    }
-    
-    // Create speech configuration with enhanced settings
-    const speechConfig = SpeechConfig.fromSubscription(speechKey, speechRegion);
-    speechConfig.speechRecognitionLanguage = 'en-US';
-    
-    // Enable detailed logging
-    speechConfig.setProperty('SpeechServiceConnection_LogLevel', '4'); // Detailed
-    
-    // Set audio format for better recognition
-    speechConfig.setProperty('AudioProcessingOptions_DtxEnabled', '0');
-    speechConfig.setProperty('SpeechServiceConnection_EndSilenceTimeoutMs', '1000');
-    speechConfig.setProperty('SpeechServiceConnection_InitialSilenceTimeoutMs', '1000');
-    
-    // Create audio configuration from the audio data
-    const pushStream = AudioConfig.createPushStream();
-    
-    // Log audio data information
-    console.log('Audio data received, size:', audioData.byteLength || audioData.length, 'bytes');
-    
-    // Write audio data to the push stream
-    pushStream.write(audioData);
-    pushStream.close();
-    
-    const audioConfig = AudioConfig.fromStreamInput(pushStream);
-    
-    // Create speech recognizer with enhanced configuration
-    const recognizer = new SpeechRecognizer(speechConfig, audioConfig);
-    
-    // Log recognition events for debugging
-    recognizer.recognized = (sender, event) => {
-      console.log(`RECOGNIZED: ${event.result.text}`);
-    };
-    
-    recognizer.canceled = (sender, event) => {
-      console.log(`CANCELED: Reason=${event.reason}`);
-      if (event.reason === CancellationReason.Error) {
-        console.log(`CANCELED: ErrorCode=${event.errorCode}`);
-        console.log(`CANCELED: ErrorDetails=${event.errorDetails}`);
-      }
-    };
-    
-    // Start recognition with enhanced error handling
+    logger.debug('Starting speech-to-text conversion', { bufferSize: audioBuffer.length });
+
+    // Convert audio to WAV format
+    const wavBuffer = await convertToWav(audioBuffer);
+    logger.debug('Audio converted to WAV', { wavSize: wavBuffer.length });
+
+    const speechConfig = createSpeechClient();
+    const audioConfig = sdk.AudioConfig.fromWavFileInput(wavBuffer);
+    const recognizer = new sdk.SpeechRecognizer(speechConfig, audioConfig);
+
+    logger.debug('Speech recognizer initialized');
+
     return new Promise((resolve, reject) => {
       recognizer.recognizeOnceAsync(
         result => {
-          recognizer.close();
-          if (result.reason === ResultReason.RecognizedSpeech) {
-            console.log('Speech recognized successfully:', result.text);
-            resolve(result.text);
-          } else {
-            console.error('Speech recognition failed with reason:', result.reason);
-            reject(new Error(`Speech recognition failed: ${result.reason}`));
+          switch (result.reason) {
+            case sdk.ResultReason.RecognizedSpeech:
+              logger.info('Speech recognized', { text: result.text });
+              resolve(result.text);
+              break;
+            case sdk.ResultReason.NoMatch:
+              logger.warn('No speech recognized');
+              reject(new Error('No speech could be recognized'));
+              break;
+            case sdk.ResultReason.Canceled:
+              const cancellation = sdk.CancellationDetails.fromResult(result);
+              logger.error('Speech recognition canceled', {
+                reason: cancellation.reason,
+                errorCode: cancellation.ErrorCode,
+                errorDetails: cancellation.errorDetails
+              });
+              reject(new Error(`Speech recognition canceled: ${cancellation.errorDetails}`));
+              break;
           }
+          recognizer.close();
         },
         err => {
-          console.error('Speech recognition error:', err);
+          logger.error('Speech recognition error', { error: err.message });
           recognizer.close();
           reject(err);
         }
       );
     });
   } catch (error) {
-    console.error('Speech-to-text conversion error:', error.message, error.stack);
-    
-    // Fallback response if speech processing fails
-    throw new Error('Failed to process voice message: ' + error.message);
+    logger.error('Speech-to-text conversion error', { error: error.message, stack: error.stack });
+    throw error;
   }
-};
-
-module.exports = {
-  convertSpeechToText
 };
