@@ -133,19 +133,20 @@ Based on the user's query, generate a MongoDB query or aggregation pipeline. Rul
 4. Handle synonyms (e.g., 'shifts' = 'schedules', 'today' = current date).
 5. For date queries (e.g., 'today'), use $gte and $lt for ranges.
 6. Determine operation: read, write, update, or delete.
-7. For read, use aggregation pipeline or find query with optional populate.
+7. For read, use find query with filter if pipeline is not needed; only use aggregation pipeline if complex operations (e.g., $lookup, $group) are required.
 8. For write, provide document to create.
 9. For update, provide filter and update object.
 10. For delete, provide filter.
 11. If unclear, return { unclear: true }.
 12. Include all fields for 'all details' queries and populate references.
+13. Ensure pipeline is non-empty if aggregation is used; otherwise, use filter with find.
 
 Return JSON:
 {
   "model": "model_name",
   "operation": "read|write|update|delete",
   "query": {
-    "pipeline": [] (for aggregation),
+    "pipeline": [] (for aggregation, non-empty if used),
     "filter": {} (for find/delete),
     "populate": [] (fields to populate),
     "data": {} (for write),
@@ -172,7 +173,8 @@ Return JSON:
             populate: { type: 'array', items: { type: 'string' } },
             data: { type: 'object' },
             update: { type: 'object' }
-          }
+          },
+          required: ['filter', 'populate'] // pipeline optional, but filter/populate always needed
         }
       },
       required: ['model', 'operation', 'query']
@@ -196,6 +198,11 @@ Return JSON:
         const parsed = JSON.parse(rawContent);
         const validate = ajv.compile(schema);
         if (validate(parsed)) {
+          // Fix empty pipeline for read operations
+          if (parsed.operation === 'read' && parsed.query.pipeline && parsed.query.pipeline.length === 0) {
+            logger.debug('Empty pipeline detected, defaulting to find query');
+            parsed.query.pipeline = null; // Use filter instead
+          }
           logger.info('Valid query generated', { parsed });
           return parsed;
         } else {

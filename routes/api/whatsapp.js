@@ -3,9 +3,9 @@ const router = express.Router();
 const auth = require('../../middleware/auth');
 const admin = require('../../middleware/admin');
 const axios = require('axios').default;
-const retry = require('async-retry');
 const mongoose = require('mongoose');
 const winston = require('winston');
+const retry = require('async-retry');
 const User = require('../../models/User');
 const Schedule = require('../../models/Schedule');
 const Location = require('../../models/Location');
@@ -126,7 +126,7 @@ router.post('/webhook', async (req, res) => {
                   return await axios.get(mediaUrl, {
                     headers: { 'Authorization': `Bearer ${client.token}` },
                     responseType: 'arraybuffer',
-                    timeout: 15000 // 15s timeout
+                    timeout: 15000
                   });
                 },
                 {
@@ -147,7 +147,7 @@ router.post('/webhook', async (req, res) => {
               await sendWhatsAppMessage(phoneNumber, 'Couldn’t process voice message. Please send text or try again later.');
               continue;
             }
-          }else {
+          } else {
             logger.warn('Unsupported message type', { type: message.type });
             await sendWhatsAppMessage(phoneNumber, 'Only text and voice messages are supported.');
             continue;
@@ -197,10 +197,10 @@ router.post('/webhook', async (req, res) => {
               logger.debug('Query result from Azure OpenAI', { queryResult });
 
               if (queryResult.error) {
-                response = `Sorry, I couldn’t process your request: ${queryResult.message}. Please try again or contact your admin.`;
+                response = `Sorry, ${user.name}, I couldn’t process your request due to a query issue. Please try again or contact your admin.`;
                 logger.error('Query generation error', { error: queryResult.message });
               } else if (queryResult.unclear) {
-                response = 'I’m not sure what you mean. Could you clarify? For example, try "list my schedules" or "show user details".';
+                response = `I’m not sure what you mean, ${user.name}. Could you clarify? For example, try "list my schedules" or "show user details".`;
                 logger.warn('Unclear query', { messageContent });
               } else {
                 const { model, operation, query } = queryResult;
@@ -216,52 +216,55 @@ router.post('/webhook', async (req, res) => {
                   case 'hourTracking': Model = HourTracking; break;
                   case 'whatsappSettings': Model = WhatsAppSettings; break;
                   default:
-                    response = `Invalid model: ${model}. Please check your request.`;
+                    response = `Invalid model: ${model}, ${user.name}. Please check your request.`;
                     logger.error('Invalid model', { model });
                     await sendWhatsAppMessage(phoneNumber, response);
                     continue;
                 }
 
                 if (operation === 'read') {
-                  const results = query.pipeline
-                    ? await Model.aggregate(query.pipeline).exec()
-                    : await Model.find(query.filter).populate(query.populate || []);
+                  let results;
+                  if (query.pipeline && query.pipeline.length > 0) {
+                    results = await Model.aggregate(query.pipeline).exec();
+                  } else {
+                    results = await Model.find(query.filter || {}).populate(query.populate || []);
+                  }
                   logger.debug('Query results', { count: results.length });
 
                   if (results.length === 0) {
-                    response = `No ${model} records found. Want to try a different query?`;
+                    response = `No ${model} records found, ${user.name}. Want to try a different query?`;
                   } else {
                     response = formatResults(model, results, user);
                   }
                 } else if (operation === 'write') {
                   const result = await Model.create(query.data);
-                  response = `${model.charAt(0).toUpperCase() + model.slice(1)} created successfully. ID: ${result._id}`;
+                  response = `${model.charAt(0).toUpperCase() + model.slice(1)} created successfully, ${user.name}. ID: ${result._id}`;
                   logger.info('Write operation successful', { model, id: result._id });
                 } else if (operation === 'update') {
                   const result = await Model.findOneAndUpdate(query.filter, query.update, { new: true });
                   if (!result) {
-                    response = `No ${model} record found to update.`;
+                    response = `No ${model} record found to update, ${user.name}.`;
                   } else {
-                    response = `${model.charAt(0).toUpperCase() + model.slice(1)} updated successfully.`;
+                    response = `${model.charAt(0).toUpperCase() + model.slice(1)} updated successfully, ${user.name}.`;
                     logger.info('Update operation successful', { model });
                   }
                 } else if (operation === 'delete') {
                   const result = await Model.findOneAndDelete(query.filter);
                   if (!result) {
-                    response = `No ${model} record found to delete.`;
+                    response = `No ${model} record found to delete, ${user.name}.`;
                   } else {
-                    response = `${model.charAt(0).toUpperCase() + model.slice(1)} deleted successfully.`;
+                    response = `${model.charAt(0).toUpperCase() + model.slice(1)} deleted successfully, ${user.name}.`;
                     logger.info('Delete operation successful', { model });
                   }
                 } else {
-                  response = 'Sorry, that operation isn’t supported. Try something like "list schedules" or "create absence".';
+                  response = `Sorry, ${user.name}, that operation isn’t supported. Try something like "list schedules" or "create absence".`;
                   logger.error('Unsupported operation', { operation });
                 }
               }
             }
           } catch (aiErr) {
             logger.error('AI processing error', { error: aiErr.message, stack: aiErr.stack });
-            response = 'I ran into an issue processing your request. Please try again or contact your admin.';
+            response = `Sorry, ${user.name}, I couldn’t process your request due to an internal error. Please try again or contact your admin.`;
           }
 
           conversation.messages.push({ sender: 'system', content: response });
@@ -372,13 +375,12 @@ router.get('/conversations', [auth, admin], async (req, res) => {
 router.get('/conversations/:id', [auth, admin], async (req, res) => {
   logger.debug('Fetching conversation', { id: req.params.id });
   try {
-    const conversation = await Conversation.findById(req.params.id)
-      .populate('user', 'name email phone');
+    const conversation = await Conversation.findById(req.query.id);
     if (!conversation) {
       logger.warn('Conversation not found', { id: req.params.id });
       return res.status(404).json({ msg: 'Conversation not found' });
     }
-    logger.info('Conversation retrieved', { id: req.params.id });
+    logger.info('Conversation retrieved', { id: req.query.id });
     res.json(conversation);
   } catch (err) {
     logger.error('Conversation fetch error', { error: err.message });
