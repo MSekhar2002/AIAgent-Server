@@ -149,18 +149,19 @@ Based on the user's query, generate a MongoDB query or aggregation pipeline. Rul
 14. Include all fields for 'all details' queries and populate references.
 15. Ensure pipeline is non-empty if aggregation is used; otherwise, use filter with find.
 
-Return JSON:
+Return JSON object:
 {
-  "model": "model_name",
+  "model": "string",
   "operation": "read|write|update|delete",
   "query": {
-    "pipeline": [] (for aggregation, non-empty if used),
-    "filter": {} (for find/delete),
-    "populate": [] (fields to populate),
+    "pipeline": [] (optional, for aggregation),
+    "filter": {} (required, for absence updates use { user: user_id, status: 'pending' } if no absence_id, else { _id }),
+    "populate": [] (optional, use ['user', 'approvedBy'] for absence),
     "data": {} (for write),
     "update": {} (for update)
   }
 }
+For absence approve/reject, set status to 'approved' or 'rejected', approvedBy to user._id, and updatedAt to current date. Detect intent from message (e.g., "approve" sets status to 'approved', "reject" to sets status to 'rejected').
 Or, for unclear/help queries:
 {
   "unclear": true,
@@ -196,7 +197,7 @@ Or, for unclear/help queries:
                 data: { type: 'object' },
                 update: { type: 'object' }
               },
-              required: ['filter', 'populate']
+              required: ['filter']
             }
           },
           required: ['model', 'operation', 'query']
@@ -231,6 +232,27 @@ Or, for unclear/help queries:
         const parsed = JSON.parse(rawContent);
         const validate = ajv.compile(schema);
         if (validate(parsed)) {
+          if (parsed.model === 'absence' && parsed.operation === 'update') {
+            const isReject = message.toLowerCase().includes('reject');
+            const status = isReject ? 'rejected' : 'approved';
+            if (!parsed.query.filter._id || parsed.query.filter._id === user._id) {
+              logger.warn('Invalid or missing absence ID, using user-based filter', { filter: parsed.query.filter });
+              parsed.query.filter = { user: user._id, status: 'pending' };
+              parsed.query.populate = ['user', 'approvedBy'];
+              parsed.query.update = {
+                $set: {
+                  status: status,
+                  approvedBy: user._id,
+                  updatedAt: new Date().toISOString()
+                }
+              };
+            } else {
+              parsed.query.populate = ['user', 'approvedBy'];
+              parsed.query.update.$set.status = status;
+              parsed.query.update.$set.approvedBy = user._id;
+              parsed.query.update.$set.updatedAt = new Date().toISOString();
+            }
+          }
           if (parsed.operation === 'read' && parsed.query?.pipeline && parsed.query.pipeline.length === 0) {
             logger.debug('Empty pipeline detected, defaulting to find query');
             parsed.query.pipeline = null;
