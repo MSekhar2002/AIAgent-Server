@@ -224,6 +224,49 @@ router.post('/webhook', async (req, res) => {
                   user
                 );
                 logger.warn('Unclear query', { messageContent });
+              } else if (queryResult.intent === 'send_announcement' && user.role === 'admin') {
+                const settings = await WhatsAppSettings.findOne();
+                if (!settings || !settings.enabled || !settings.templates?.general_announcement) {
+                  response = `Muni Sekhar, WhatsApp integration or general_announcement template is not configured.`;
+                  logger.warn('WhatsApp integration disabled or template missing');
+                } else {
+                  const template = settings.templates.general_announcement;
+                  const announcementText = queryResult.parameters?.message || 'No message provided';
+                  if (queryResult.parameters?.toAll) {
+                    const users = await User.find({ phone: { $ne: null }, 'notificationPreferences.whatsapp': true });
+                    let sentCount = 0;
+                    for (const notifyUser of users) {
+                      const parameters = [
+                        { type: 'text', text: notifyUser.name },
+                        { type: 'text', text: announcementText }
+                      ];
+                      await sendWhatsAppTemplate(notifyUser.phone, template.name, template.language, parameters);
+                      logger.info('Announcement sent to user', { userId: notifyUser._id, phone: notifyUser.phone });
+                      sentCount++;
+                    }
+                    response = `Muni Sekhar, announcement sent to ${sentCount} user(s)!`;
+                  } else if (queryResult.parameters?.targetUser) {
+                    const targetUser = await User.findOne({ 
+                      name: new RegExp(`^${queryResult.parameters.targetUser}$`, 'i'), 
+                      phone: { $ne: null },
+                      'notificationPreferences.whatsapp': true 
+                    });
+                    if (!targetUser) {
+                      response = `Muni Sekhar, I couldn't find a user named "${queryResult.parameters.targetUser}" with WhatsApp notifications enabled.`;
+                      logger.warn('User not found or WhatsApp disabled', { userName: queryResult.parameters.targetUser });
+                    } else {
+                      const parameters = [
+                        { type: 'text', text: targetUser.name },
+                        { type: 'text', text: announcementText }
+                      ];
+                      await sendWhatsAppTemplate(targetUser.phone, template.name, template.language, parameters);
+                      response = `Muni Sekhar, announcement sent to ${targetUser.name}!`;
+                      logger.info('Announcement sent to specific user', { userId: targetUser._id, phone: targetUser.phone });
+                    }
+                  } else {
+                    response = `Muni Sekhar, please clarify the recipient (e.g., a user name or "all").`;
+                  }
+                }
               } else {
                 const { model, operation, query } = queryResult;
                 logger.info('Executing query', { model, operation, query });
@@ -593,7 +636,7 @@ router.post('/send', [auth, admin], async (req, res) => {
       logger.warn('User or phone not found', { userId });
       return res.status(404).json({ error: 'User or phone not found' });
     }
-    await sendMessage(user.phone, userMessage);
+    await sendWhatsAppMessage(user.phone, userMessage);
     logger.info('Admin message sent', { userId });
     res.json({ message: 'Message sent' });
   } catch (err) {
@@ -635,9 +678,9 @@ router.get('/conversations/:id', [auth, admin], async (req, res) => {
 router.get('/settings', [auth, admin], async (req, res) => {
   logger.debug('Fetching WhatsApp settings');
   try {
-    let settings = await settings.findOne();
+    let settings = await WhatsAppSettings.findOne();
     if (!settings) {
-      settings = new Settings();
+      settings = new WhatsAppSettings();
       await settings.save();
       logger.info('Created default WhatsApp settings');
     }
@@ -652,9 +695,9 @@ router.get('/settings', [auth, admin], async (req, res) => {
 router.put('/settings/update', [auth, admin], async (req, res) => {
   logger.debug('Updating WhatsApp settings', { body: req.body });
   try {
-    let settings = await Settings.findOne();
+    let settings = await WhatsAppSettings.findOne();
     if (!settings) {
-      settings = new Settings();
+      settings = new WhatsAppSettings();
     }
     Object.assign(settings, req.body);
     settings.updatedAt = Date.now();

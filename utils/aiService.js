@@ -148,6 +148,14 @@ Based on the user's query, generate a MongoDB query or aggregation pipeline. Rul
 13. If the query is 'who am I', return a read query for the User model with filter { _id: ${user._id} }.
 14. Include all fields for 'all details' queries and populate references.
 15. Ensure pipeline is non-empty if aggregation is used; otherwise, use filter with find.
+- Intent: send_announcement
+  Description: Admin wants to send a general announcement to a specific user or all users.
+  Parameters:
+    - toAll: boolean (true if targeting all users, false otherwise)
+    - targetUser: string (name of specific user, if not toAll)
+    - message: string (announcement content)
+  Example: "Notify Aryu about meeting" -> { intent: "send_announcement", parameters: { toAll: false, targetUser: "Aryu", message: "Team meeting at 10 AM" } }
+  Example: "Tell everyone office closed" -> { intent: "send_announcement", parameters: { toAll: true, message: "Office closed tomorrow" } }
 
 Return JSON object:
 {
