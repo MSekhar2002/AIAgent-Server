@@ -518,24 +518,24 @@ const generateHelpMessageForContext = async (user, context, conversationHistory)
 
   const examples = {
     user: {
-      create: `Create user named Priya Sharma with email priya@example.com, phone +919876543210, role user, department Sales, position Manager`,
+      create: `Create user named Priya Sharma with email priya@example.com, phone +919876543210, role user, department Sales,`,
       update: `Update user Priya Sharma’s email to priya.sharma@example.com and role to admin`
     },
     schedule: {
-      create: `Create schedule for Aryu at Hyderabad on 2025-06-01 from 9 AM to 5 PM`,
-      update: `Update schedule on 2025-06-01 to end at 6 PM`
+      create: `Create schedule for Aryu at Hyderabad on 2025-06-30 from 9 AM to 5 PM`,
+      update: `Update schedule on 2025-06-30 to end at 6 PM`
     },
     location: {
-      create: `Create location named Bangalore Office at 123 MG Road, Bangalore, Karnataka`,
+      create: `Create location named Bangalore Office at 123 MG Road, Bangalore`,
       update: `Update Bangalore Office address to 456 MG Road`
     },
     absence: {
-      create: `Request absence for Aryu from 2025-06-02 to 2025-06-03 for medical reasons`,
-      update: `Update absence for Aryu to end on 2025-06-04`
+      create: `Request absence for Aryu from 2025-07-01 to 2025-07-02 for medical reasons`,
+      update: `Update absence for Aryu to end on 2025-07-03`
     },
     hourTracking: {
-      create: `Log 8 hours for Aryu on 2025-06-01 for project work`,
-      update: `Update hours for Aryu on 2025-06-01 to 7 hours`
+      create: `Log 8 hours for Aryu on 2025-06-30 for project work`,
+      update: `Update hours for Aryu on 2025-06-30 to 7 hours`
     },
     conversation: {
       create: `Start a new conversation for Aryu on WhatsApp`,
@@ -547,7 +547,7 @@ const generateHelpMessageForContext = async (user, context, conversationHistory)
     }
   };
 
-  message += `\nExample: "${examples[model][action]}"\nTry with these details, or let me know if you need more help!`;
+  message += `\nExample: "${examples[model][action]}"\nTry again with these details, or let me know if you need more help!`;
 
   return await processWithAzureOpenAI(
     `Explain to ${user.name} how to ${action} a ${model} using this information in a friendly, natural way: ${message}`,
@@ -556,7 +556,7 @@ const generateHelpMessageForContext = async (user, context, conversationHistory)
   );
 };
 
-// Helper to format query results (used for raw formatting before humanization)
+// Helper to format query results (used for raw formatting before adding)
 const formatResults = (model, results) => {
   let response = `${model.charAt(0).toUpperCase() + model.slice(1)} Details:\n\n`;
 
@@ -583,19 +583,19 @@ const formatResults = (model, results) => {
   return response;
 };
 
-// Admin routes (unchanged)
+// Admin routes
 router.post('/send', [auth, admin], async (req, res) => {
-  const { userId, message } = req.body;
-  logger.debug('Admin send message request', { userId, message });
+  const { userId, userMessage } = req.body;
+  logger.debug('Admin send message request', { userId, userMessage });
   try {
     const user = await User.findById(userId);
     if (!user || !user.phone) {
       logger.warn('User or phone not found', { userId });
-      return res.status(404).json({ msg: 'User or phone not found' });
+      return res.status(404).json({ error: 'User or phone not found' });
     }
-    await sendWhatsAppMessage(user.phone, message);
+    await sendMessage(user.phone, userMessage);
     logger.info('Admin message sent', { userId });
-    res.json({ msg: 'Message sent' });
+    res.json({ message: 'Message sent' });
   } catch (err) {
     logger.error('Admin send error', { error: err.message });
     res.status(500).send('Server Error');
@@ -606,8 +606,8 @@ router.get('/conversations', [auth, admin], async (req, res) => {
   logger.debug('Fetching conversations');
   try {
     const conversations = await Conversation.find()
-      .populate('user', 'name email phone')
-      .sort({ lastActivity: -1 });
+      .populate('user', 'name', 'email', 'phone')
+      .sort({ createdAt: -1 });
     logger.info('Conversations retrieved', { count: conversations.length });
     res.json(conversations);
   } catch (err) {
@@ -622,7 +622,7 @@ router.get('/conversations/:id', [auth, admin], async (req, res) => {
     const conversation = await Conversation.findById(req.params.id);
     if (!conversation) {
       logger.warn('Conversation not found', { id: req.params.id });
-      return res.status(404).json({ msg: 'Conversation not found' });
+      return res.status(404).json({ error: 'Conversation not found' });
     }
     logger.info('Conversation retrieved', { id: req.params.id });
     res.json(conversation);
@@ -635,9 +635,9 @@ router.get('/conversations/:id', [auth, admin], async (req, res) => {
 router.get('/settings', [auth, admin], async (req, res) => {
   logger.debug('Fetching WhatsApp settings');
   try {
-    let settings = await WhatsAppSettings.findOne();
+    let settings = await settings.findOne();
     if (!settings) {
-      settings = new WhatsAppSettings();
+      settings = new Settings();
       await settings.save();
       logger.info('Created default WhatsApp settings');
     }
@@ -649,12 +649,12 @@ router.get('/settings', [auth, admin], async (req, res) => {
   }
 });
 
-router.put('/settings', [auth, admin], async (req, res) => {
+router.put('/settings/update', [auth, admin], async (req, res) => {
   logger.debug('Updating WhatsApp settings', { body: req.body });
   try {
-    let settings = await WhatsAppSettings.findOne();
+    let settings = await Settings.findOne();
     if (!settings) {
-      settings = new WhatsAppSettings();
+      settings = new Settings();
     }
     Object.assign(settings, req.body);
     settings.updatedAt = Date.now();

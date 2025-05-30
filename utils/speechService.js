@@ -42,7 +42,7 @@ const convertToWav = (audioBuffer) => {
     logger.debug('Converting audio to WAV', { bufferSize: audioBuffer.length });
 
     ffmpeg(inputStream)
-      .inputFormat('ogg') // WhatsApp voice messages are OGG
+      .inputFormat('ogg')
       .audioCodec('pcm_s16le')
       .audioFrequency(16000)
       .audioChannels(1)
@@ -75,7 +75,7 @@ const withTimeout = (promise, ms) => {
 exports.convertSpeechToText = async (audioBuffer, retries = 2) => {
   for (let attempt = 1; attempt <= retries + 1; attempt++) {
     try {
-      logger.debug('Starting speech-to-text conversion', { bufferSize: audioBuffer.length, attempt });
+      logger.debug('Starting speech-to-text conversion', { attempt, bufferSize: audioBuffer.length });
 
       // Convert audio to WAV format
       const wavBuffer = await convertToWav(audioBuffer);

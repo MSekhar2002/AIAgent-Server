@@ -85,7 +85,13 @@ exports.processWithAzureOpenAI = async (message, conversationHistory, user) => {
       content: `You are a friendly assistant for the Employee Scheduling System, helping employees and admins with schedules, locations, absences, and more. The user is ${user.name}, a ${user.position || 'staff member'} in ${user.department || 'company'}. Respond naturally, as a human would, using the user's name and including follow-up suggestions. Avoid technical jargon or raw data dumps. If unsure, ask for clarification or suggest contacting the admin.`
     };
 
-    const messages = [systemMessage, ...conversationHistory, { role: 'user', content: message }];
+    // Map conversation history to ensure proper role field
+    const mappedHistory = conversationHistory.map(msg => ({
+      role: msg.sender === 'user' ? 'user' : 'assistant',
+      content: msg.content
+    }));
+
+    const messages = [systemMessage, ...mappedHistory, { role: 'user', content: message }];
 
     const response = await client.chat.completions.create({
       model: deploymentId,
@@ -163,9 +169,15 @@ Or, for unclear/help queries:
 }`
     };
 
+    // Map conversation history for query generation
+    const mappedHistory = conversationHistory.map(msg => ({
+      role: msg.sender === 'user' ? 'user' : 'assistant',
+      content: msg.content
+    }));
+
     const userMessage = {
       role: 'user',
-      content: `User role: ${user.role}\nUser ID: ${user._id}\nConversation history: ${JSON.stringify(conversationHistory.slice(-5))}\nQuery: ${message}`
+      content: `User role: ${user.role}\nUser ID: ${user._id}\nConversation history: ${JSON.stringify(mappedHistory.slice(-5))}\nQuery: ${message}`
     };
 
     const schema = {
