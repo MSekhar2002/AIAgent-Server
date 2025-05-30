@@ -71,7 +71,7 @@ const simplifySchemas = (modelSchemas) => {
 
   cachedSchemas = simplifiedSchemas;
   logger.info('Schemas simplified and cached');
-  return simplifiedSchemas;
+  return cachedSchemas;
 };
 
 exports.processWithAzureOpenAI = async (message, conversationHistory, user) => {
@@ -82,7 +82,7 @@ exports.processWithAzureOpenAI = async (message, conversationHistory, user) => {
 
     const systemMessage = {
       role: 'system',
-      content: `You are a friendly assistant for the Employee Scheduling System, helping employees and admins with schedules, locations, absences, and more. The user is ${user.name}, a ${user.position || 'staff member'} in ${user.department || 'company'}. Respond naturally, using the user's name, and include follow-up suggestions. If unsure, ask for clarification or suggest contacting the admin.`
+      content: `You are a friendly assistant for the Employee Scheduling System, helping employees and admins with schedules, locations, absences, and more. The user is ${user.name}, a ${user.position || 'staff member'} in ${user.department || 'company'}. Respond naturally, as a human would, using the user's name and including follow-up suggestions. Avoid technical jargon or raw data dumps. If unsure, ask for clarification or suggest contacting the admin.`
     };
 
     const messages = [systemMessage, ...conversationHistory, { role: 'user', content: message }];
@@ -99,7 +99,7 @@ exports.processWithAzureOpenAI = async (message, conversationHistory, user) => {
     return result;
   } catch (error) {
     logger.error('Azure OpenAI processing error', { error: error.message, stack: error.stack });
-    return 'Sorry, I couldn’t process your request right now. Please try again or contact your admin.';
+    return `Sorry, ${user.name}, I couldn’t process your request right now. Please try again or contact your admin.`;
   }
 };
 
@@ -110,7 +110,7 @@ exports.generateMongoDBQuery = async (message, user, modelSchemas, conversationH
     logger.debug('Generating MongoDB query', { message, userId: user._id });
 
     const simplifiedSchemas = simplifySchemas(modelSchemas);
-    const currentDate = new Date().toISOString().split('T')[0]; // Today’s date
+    const currentDate = new Date().toISOString().split('T')[0];
 
     const systemMessage = {
       role: 'system',
@@ -137,9 +137,11 @@ Based on the user's query, generate a MongoDB query or aggregation pipeline. Rul
 8. For write, provide document to create.
 9. For update, provide filter and update object.
 10. For delete, provide filter.
-11. If unclear, return { unclear: true }.
-12. Include all fields for 'all details' queries and populate references.
-13. Ensure pipeline is non-empty if aggregation is used; otherwise, use filter with find.
+11. If unclear or the query asks what the system can do (e.g., 'what can you do'), return { unclear: true, help: true }.
+12. If the query asks about details needed to create or update a record (e.g., 'what do you need to create a schedule'), return { unclear: true, help: true, context: "create_<model>" } or { unclear: true, help: true, context: "update_<model>" }.
+13. If the query is 'who am I', return a read query for the User model with filter { _id: ${user._id} }.
+14. Include all fields for 'all details' queries and populate references.
+15. Ensure pipeline is non-empty if aggregation is used; otherwise, use filter with find.
 
 Return JSON:
 {
@@ -152,6 +154,12 @@ Return JSON:
     "data": {} (for write),
     "update": {} (for update)
   }
+}
+Or, for unclear/help queries:
+{
+  "unclear": true,
+  "help": true,
+  "context": "create_schedule|update_user|..." (optional)
 }`
     };
 
@@ -161,23 +169,36 @@ Return JSON:
     };
 
     const schema = {
-      type: 'object',
-      properties: {
-        model: { type: 'string' },
-        operation: { type: 'string', enum: ['read', 'write', 'update', 'delete'] },
-        query: {
+      oneOf: [
+        {
           type: 'object',
           properties: {
-            pipeline: { type: 'array' },
-            filter: { type: 'object' },
-            populate: { type: 'array', items: { type: 'string' } },
-            data: { type: 'object' },
-            update: { type: 'object' }
+            model: { type: 'string' },
+            operation: { type: 'string', enum: ['read', 'write', 'update', 'delete'] },
+            query: {
+              type: 'object',
+              properties: {
+                pipeline: { type: 'array' },
+                filter: { type: 'object' },
+                populate: { type: 'array', items: { type: 'string' } },
+                data: { type: 'object' },
+                update: { type: 'object' }
+              },
+              required: ['filter', 'populate']
+            }
           },
-          required: ['filter', 'populate'] // pipeline optional, but filter/populate always needed
+          required: ['model', 'operation', 'query']
+        },
+        {
+          type: 'object',
+          properties: {
+            unclear: { type: 'boolean', enum: [true] },
+            help: { type: 'boolean', enum: [true] },
+            context: { type: 'string', pattern: '^(create|update)_(user|schedule|location|absence|hourTracking|conversation|whatsappSettings)$', nullable: true }
+          },
+          required: ['unclear', 'help']
         }
-      },
-      required: ['model', 'operation', 'query']
+      ]
     };
 
     let response;
@@ -189,7 +210,7 @@ Return JSON:
           messages: [systemMessage, userMessage],
           temperature: 0.1,
           response_format: { type: 'json_object' },
-          max_tokens: 2000
+          max_tokens: 1000
         });
 
         const rawContent = response.choices?.[0]?.message?.content || '{}';
@@ -198,10 +219,9 @@ Return JSON:
         const parsed = JSON.parse(rawContent);
         const validate = ajv.compile(schema);
         if (validate(parsed)) {
-          // Fix empty pipeline for read operations
-          if (parsed.operation === 'read' && parsed.query.pipeline && parsed.query.pipeline.length === 0) {
+          if (parsed.operation === 'read' && parsed.query?.pipeline && parsed.query.pipeline.length === 0) {
             logger.debug('Empty pipeline detected, defaulting to find query');
-            parsed.query.pipeline = null; // Use filter instead
+            parsed.query.pipeline = null;
           }
           logger.info('Valid query generated', { parsed });
           return parsed;
