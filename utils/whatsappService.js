@@ -1,33 +1,25 @@
 const axios = require('axios');
 
-// Create Meta WhatsApp API client
 const createMetaClient = () => {
   const token = process.env.META_WHATSAPP_TOKEN;
   const phoneNumberId = process.env.META_WHATSAPP_PHONE_NUMBER_ID;
-  
+
   if (!token || !phoneNumberId) {
     throw new Error('Meta WhatsApp credentials not configured');
   }
-  
+
   return {
     token,
     phoneNumberId,
-    apiUrl: `https://graph.facebook.com/v17.0/${phoneNumberId}/messages`
+    apiUrl: `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`
   };
 };
 
-/**
- * Send WhatsApp message using Meta WhatsApp Cloud API
- * @param {string} to - Recipient phone number (format: +1234567890)
- * @param {string} message - Message content
- */
 const sendWhatsAppMessage = async (to, message) => {
   try {
     const client = createMetaClient();
-    
-    // Format phone number for WhatsApp (remove any 'whatsapp:' prefix if present)
     const formattedTo = to.replace('whatsapp:', '');
-    
+
     const response = await axios.post(
       client.apiUrl,
       {
@@ -44,7 +36,7 @@ const sendWhatsAppMessage = async (to, message) => {
         }
       }
     );
-    
+
     console.log('WhatsApp message sent:', response.data.messages[0].id);
     return response.data;
   } catch (error) {
@@ -53,23 +45,12 @@ const sendWhatsAppMessage = async (to, message) => {
   }
 };
 
-/**
- * Send WhatsApp template message using Meta WhatsApp Cloud API
- * @param {string} to - Recipient phone number (format: +1234567890)
- * @param {string} templateName - Name of the template
- * @param {string} languageCode - Language code (e.g., en)
- * @param {Object|Array} parameters - Parameters for the template (object with named parameters or array for backward compatibility)
- */
-
 const sendWhatsAppTemplate = async (to, templateName, languageCode, parameters) => {
   try {
-    const client = createMetaClient(); // Your custom function to get Meta API config
-
-    // Remove any 'whatsapp:' prefix from recipient number
+    const client = createMetaClient();
     const formattedTo = to.replace('whatsapp:', '');
 
     const components = [];
-
     if (parameters) {
       const paramArray = Array.isArray(parameters)
         ? parameters
@@ -93,9 +74,7 @@ const sendWhatsAppTemplate = async (to, templateName, languageCode, parameters) 
         type: 'template',
         template: {
           name: templateName,
-          language: {
-            code: languageCode
-          },
+          language: { code: languageCode },
           components
         }
       },
@@ -115,31 +94,20 @@ const sendWhatsAppTemplate = async (to, templateName, languageCode, parameters) 
   }
 };
 
-
-/**
- * Send schedule notification via WhatsApp using templates
- * @param {Object} user - User object
- * @param {Object} schedule - Schedule object
- * @param {Object} location - Location object
- */
 const sendScheduleWhatsApp = async (user, schedule, location) => {
   try {
-    // Get WhatsApp settings to use the configured template
     const WhatsAppSettings = require('../models/WhatsAppSettings');
     const settings = await WhatsAppSettings.findOne();
-    
+
     if (!settings || !settings.enabled) {
       throw new Error('WhatsApp integration is disabled');
     }
-    
-    // Get template configuration
+
     const template = settings.templates?.scheduleReminder;
-    
     if (!template || !template.name) {
       throw new Error('Schedule reminder template not configured');
     }
-    
-    // Try to send using template
+
     const dateStr = new Date(schedule.date).toLocaleDateString();
     const parameters = {
       user_name: user.name,
@@ -147,71 +115,38 @@ const sendScheduleWhatsApp = async (user, schedule, location) => {
       schedule_time: `${schedule.startTime} - ${schedule.endTime}`,
       location_name: `${location.name}, ${location.address}, ${location.city}`
     };
-    
+
     return await sendWhatsAppTemplate(user.phone, template.name, template.language, parameters);
   } catch (templateError) {
-    console.error('Template message failed, falling back to text message:', templateError.message);
-    
-    // Fall back to regular text message if template fails
-    const message = `
-Hello ${user.name},
-
-You have been assigned to the following schedule:
-
-Title: ${schedule.title}
-Date: ${new Date(schedule.date).toLocaleDateString()}
-Time: ${schedule.startTime} - ${schedule.endTime}
-Location: ${location.name}, ${location.address}, ${location.city}
-
-Reply to this message if you have any questions.
-`;
-    
+    console.error('Template message failed, falling back to text:', templateError.message);
+    const message = `Hello ${user.name},\n\nYou have a schedule:\n\nTitle: ${schedule.title}\nDate: ${new Date(schedule.date).toLocaleDateString()}\nTime: ${schedule.startTime} - ${schedule.endTime}\nLocation: ${location.name}, ${location.address}, ${location.city}\n\nReply with questions.`;
     return sendWhatsAppMessage(user.phone, message);
   }
 };
 
-/**
- * Send welcome message to a new user via WhatsApp using templates
- * @param {Object} user - User object
- * @param {string} companyName - Company name to include in the welcome message
- */
 const sendWelcomeWhatsApp = async (user, companyName) => {
   try {
-    // Get WhatsApp settings to use the configured template
     const WhatsAppSettings = require('../models/WhatsAppSettings');
     const settings = await WhatsAppSettings.findOne();
-    
+
     if (!settings || !settings.enabled) {
       throw new Error('WhatsApp integration is disabled');
     }
-    
-    // Get template configuration
+
     const template = settings.templates?.welcomeMessage;
-    
     if (!template || !template.name) {
       throw new Error('Welcome message template not configured');
     }
-    
-    // Try to send using template
+
     const parameters = {
-      
       user_name: user.name,
       company_name: companyName || 'Our Company'
     };
-    
+
     return await sendWhatsAppTemplate(user.phone, template.name, template.language, parameters);
   } catch (templateError) {
-    console.error('Template message failed, falling back to text message:', templateError.message);
-    
-    // Fall back to regular text message if template fails
-    const message = `
-Hello ${user.name},
-
-Welcome to ${companyName || 'Our Company'}! We are excited to have you join our team. You can use this number for schedule updates and company announcements.
-
-Reply to this message if you have any questions.
-`;
-    
+    console.error('Template message failed, falling back to text:', templateError.message);
+    const message = `Hello ${user.name},\n\nWelcome to ${companyName || 'Our Company'}! Use this number for schedule updates and announcements.\n\nReply with questions.`;
     return sendWhatsAppMessage(user.phone, message);
   }
 };
