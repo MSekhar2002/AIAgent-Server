@@ -346,11 +346,21 @@ router.post('/webhook', async (req, res) => {
                         user
                       );
                     } else {
-                      response = await processWithAzureOpenAI(
-                        `Tell ${user.name} that the ${model} was updated successfully and ask if they need anything else.`,
-                        conversation.messages.slice(-5),
-                        user
-                      );
+                      if (model === 'absence') {
+                        const targetUser = await User.findById(result.user);
+                        const status = query.update.$set.status || 'updated';
+                        response = await processWithAzureOpenAI(
+                          `Tell ${user.name} that ${targetUser.name}'s absence request for ${result.startDate.toLocaleDateString()} was ${status} successfully and ask if they need anything else.`,
+                          conversation.messages.slice(-5),
+                          user
+                        );
+                      } else {
+                        response = await processWithAzureOpenAI(
+                          `Tell ${user.name} that the ${model} was updated successfully and ask if they need anything else.`,
+                          conversation.messages.slice(-5),
+                          user
+                        );
+                      }
                       logger.info('Update operation successful', { model });
                     }
                   }

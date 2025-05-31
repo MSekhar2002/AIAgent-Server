@@ -1,6 +1,7 @@
 const { AzureOpenAI } = require('openai');
 const winston = require('winston');
 const Ajv = require('ajv');
+const User = require('../models/User');
 const ajv = new Ajv();
 
 // Logger setup
@@ -169,8 +170,7 @@ Return JSON object:
     "update": {} (for update)
   }
 }
-For absence approve/reject, set status to 'approved' or 'rejected', approvedBy to user._id, and updatedAt to current date. Detect intent from message (e.g., "approve" sets status to 'approved', "reject" to sets status to 'rejected').
-Or, for unclear/help queries:
+For absence approve/reject, set status to 'approved' or 'rejected', approvedBy to user._id, and updatedAt to current date. If an employee name is provided (e.g., "Approve Aryu's absence"), query the User model by name to get the user ID and use it in the filter (e.g., { user: targetUser._id, status: 'pending' }). If no name or ID, use the current user's ID.Or, for unclear/help queries:
 {
   "unclear": true,
   "help": true,
@@ -203,7 +203,8 @@ Or, for unclear/help queries:
                 filter: { type: 'object' },
                 populate: { type: 'array', items: { type: 'string' } },
                 data: { type: 'object' },
-                update: { type: 'object' }
+                update: { type: 'object' },
+                employeeName: { type: 'string' }
               },
               required: ['filter']
             }
@@ -240,12 +241,25 @@ Or, for unclear/help queries:
         const parsed = JSON.parse(rawContent);
         const validate = ajv.compile(schema);
         if (validate(parsed)) {
+          if (parsed.intent === 'send_announcement') {
+            logger.info('Announcement intent detected', { parameters: parsed.parameters });
+            return parsed;
+          }
           if (parsed.model === 'absence' && parsed.operation === 'update') {
             const isReject = message.toLowerCase().includes('reject');
             const status = isReject ? 'rejected' : 'approved';
+            let targetUserId = user._id;
+            if (parsed.query?.employeeName) {
+              const targetUser = await User.findOne({ name: new RegExp(`^${parsed.query.employeeName}$`, 'i') });
+              if (!targetUser) {
+                logger.warn('Employee not found by name', { employeeName: parsed.query.employeeName });
+                return { error: true, message: `Employee "${parsed.query.employeeName}" not found.` };
+              }
+              targetUserId = targetUser._id;
+            }
             if (!parsed.query.filter._id || parsed.query.filter._id === user._id) {
-              logger.warn('Invalid or missing absence ID, using user-based filter', { filter: parsed.query.filter });
-              parsed.query.filter = { user: user._id, status: 'pending' };
+              logger.debug('Using name-based or user-based filter', { employeeName: parsed.query?.employeeName });
+              parsed.query.filter = { user: targetUserId, status: 'pending' };
               parsed.query.populate = ['user', 'approvedBy'];
               parsed.query.update = {
                 $set: {
@@ -260,6 +274,7 @@ Or, for unclear/help queries:
               parsed.query.update.$set.approvedBy = user._id;
               parsed.query.update.$set.updatedAt = new Date().toISOString();
             }
+            logger.info('Valid absence update query generated', { parsed });
           }
           if (parsed.operation === 'read' && parsed.query?.pipeline && parsed.query.pipeline.length === 0) {
             logger.debug('Empty pipeline detected, defaulting to find query');
