@@ -31,6 +31,10 @@ const createSpeechClient = () => {
 
   const speechConfig = sdk.SpeechConfig.fromSubscription(subscriptionKey, region);
   speechConfig.speechRecognitionLanguage = 'en-US';
+  speechConfig.setProperty(
+    sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs,
+    "45000" 
+  );
   return speechConfig;
 };
 
