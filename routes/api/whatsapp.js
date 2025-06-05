@@ -104,7 +104,7 @@ router.post('/webhook', async (req, res) => {
               const mediaResponse = await retry(
                 async () => {
                   return await axios.get(
-                    `https://graph.facebook.com/v22.0/${mediaId}`,
+                    `https://graph.facebook.com/v23.0/${mediaId}`,
                     { headers: { 'Authorization': `Bearer ${client.token}` } }
                   );
                 },
