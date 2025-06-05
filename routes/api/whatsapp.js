@@ -138,6 +138,13 @@ router.post('/webhook', async (req, res) => {
                   }
                 }
               );
+              logger.debug('Media content headers', { contentType: mediaContent.headers['content-type'] });
+
+              if (!mediaContent.data || mediaContent.data.length === 0) {
+                logger.error('Downloaded media content is empty');
+                throw new Error('Empty audio buffer');
+              }
+              
 
               messageContent = await convertSpeechToText(mediaContent.data);
               logger.info('Voice message transcribed', { transcription: messageContent });
