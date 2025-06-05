@@ -4,6 +4,7 @@ const { Readable } = require('stream');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const fs = require('fs');
+const getAudioDuration = require('get-audio-duration');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -55,15 +56,23 @@ const convertToWav = (audioBuffer) => {
         logger.error('FFmpeg conversion error', { error: err.message });
         reject(new Error('Audio conversion failed'));
       })
-      .on('end', () => {
+      .on('end', async () => {
         logger.info('Audio converted to WAV', { outputPath });
         if (!fs.existsSync(outputPath)) {
           logger.error('WAV file not created', { outputPath });
           reject(new Error('WAV file creation failed'));
+          return;
         }
+
         const wavBuffer = fs.readFileSync(outputPath);
-        fs.unlinkSync(outputPath); // Clean up
-        resolve(wavBuffer);
+        try {
+          const duration = await getAudioDuration.fromFile(outputPath);
+          fs.unlinkSync(outputPath); // Clean up
+          resolve({ wavBuffer, duration });
+        } catch (err) {
+          fs.unlinkSync(outputPath);
+          reject(new Error('Failed to get audio duration'));
+        }
       })
       .save(outputPath);
   });
@@ -82,8 +91,13 @@ exports.convertSpeechToText = async (audioBuffer, retries = 2) => {
       logger.debug('Starting speech-to-text conversion', { attempt, bufferSize: audioBuffer.length });
 
       // Convert audio to WAV format
-      const wavBuffer = await convertToWav(audioBuffer);
-      logger.debug('Audio converted to WAV', { wavSize: wavBuffer.length });
+      const { wavBuffer, duration } = await convertToWav(audioBuffer);
+logger.debug('Audio converted to WAV', { wavSize: wavBuffer.length, duration });
+
+if (duration < 0.5) {
+  logger.warn('Audio too short or silent for transcription', { duration });
+  throw new Error('Audio too short or silent');
+}
 
       // Validate WAV buffer
       if (wavBuffer.length < 44) { // Minimum WAV header size
