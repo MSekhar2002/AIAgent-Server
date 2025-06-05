@@ -13,7 +13,7 @@ const Conversation = require('../../models/Conversation');
 const Absence = require('../../models/Absence');
 const HourTracking = require('../../models/HourTracking');
 const WhatsAppSettings = require('../../models/WhatsAppSettings');
-const { sendWhatsAppMessage } = require('../../utils/whatsappService');
+const { sendWhatsAppMessage, sendWhatsAppTemplate } = require('../../utils/whatsappService');
 const { processWithAzureOpenAI, generateMongoDBQuery } = require('../../utils/aiService');
 const { convertSpeechToText } = require('../../utils/speechService');
 
@@ -26,9 +26,61 @@ const logger = winston.createLogger({
   ),
   transports: [
     new winston.transports.File({ filename: 'logs/whatsapp.log' }),
+    new winston.transports.File({ filename: 'logs/commands.log' }),
     new winston.transports.Console()
   ]
 });
+
+
+const downloadAudio = async (audioId) => {
+  return await retry(
+    async () => {
+      try {
+        const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+        if (!accessToken) {
+          logger.error('WhatsApp access token missing');
+          throw new Error('WhatsApp access token not configured');
+        }
+
+        // Get audio metadata (URL) from Meta API
+        const response = await axios.get(`https://graph.facebook.com/v23.0/${audioId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+
+        const audioUrl = response.data.url;
+        if (!audioUrl) {
+          logger.error('Audio URL not found', { audioId });
+          throw new Error('Failed to retrieve audio URL');
+        }
+
+        // Download audio file as a buffer
+        const audioResponse = await axios.get(audioUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          responseType: 'arraybuffer'
+        });
+
+        const audioBuffer = Buffer.from(audioResponse.data);
+        logger.info('Audio downloaded successfully', { audioId, bufferSize: audioBuffer.length });
+
+        return audioBuffer;
+      } catch (error) {
+        logger.error('Failed to download audio', {
+          audioId,
+          error: error.message,
+          status: error.response?.status,
+          stack: error.stack
+        });
+        throw error;
+      }
+    },
+    {
+      retries: 3,
+      factor: 2,
+      minTimeout: 1000,
+      onRetry: (err, attempt) => logger.warn('Retrying audio download', { attempt, error: err.message })
+    }
+  );
+};
 
 // Model schemas for Azure OpenAI
 const modelSchemas = {
@@ -64,361 +116,265 @@ router.get('/webhook', (req, res) => {
 // @access  Public
 router.post('/webhook', async (req, res) => {
   try {
-    logger.debug('Received webhook POST', { body: req.body });
-    res.status(200).send('EVENT_RECEIVED');
-    const data = req.body;
-
-    if (data.object !== 'whatsapp_business_account') {
-      logger.warn('Invalid webhook object', { object: data.object });
-      return;
+    const body = req.body;
+    if (!body.entry || !body.entry[0].changes || !body.entry[0].changes[0].value.messages) {
+      logger.warn('Invalid webhook payload', { body });
+      return res.sendStatus(400);
     }
 
-    for (const entry of data.entry) {
-      for (const change of entry.changes) {
-        if (change.field !== 'messages') continue;
+    const message = body.entry[0].changes[0].value.messages[0];
+    const phoneNumber = body.entry[0].changes[0].value.contacts[0].wa_id;
+    const user = await User.findOne({ phone: phoneNumber });
 
-        for (const message of change.value.messages || []) {
-          const phoneNumber = message.from;
-          logger.info('Processing message', { phoneNumber, messageId: message.id });
+    if (!user) {
+      await sendWhatsAppMessage(phoneNumber, 'Please register with the system first.');
+      return res.sendStatus(200);
+    }
 
-          const user = await User.findOne({ phone: phoneNumber });
-          if (!user) {
-            logger.warn('User not found', { phoneNumber });
-            await sendWhatsAppMessage(phoneNumber, 'This number is only for registered employees. Please contact your administrator.');
-            continue;
-          }
+    let conversation = await Conversation.findOne({ user: user._id, active: true });
+    if (!conversation) {
+      conversation = new Conversation({ user: user._id, platform: 'whatsapp' });
+    }
 
-          let messageContent = '';
-          let isVoiceMessage = false;
+    const isActiveSession = conversation.lastActivity > new Date(Date.now() - 24 * 60 * 60 * 1000);
+    let userInput = message.type === 'text' ? message.text.body : null;
 
-          if (message.type === 'text') {
-            messageContent = message.text.body;
-            logger.debug('Text message received', { content: messageContent });
-          } else if (message.type === 'audio') {
-            isVoiceMessage = true;
-            try {
-              const mediaId = message.audio.id;
-              logger.debug('Fetching voice message', { mediaId });
+    if (message.type === 'audio') {
+      const audioId = message.audio.id;
+      const audioBuffer = await downloadAudio(audioId);
+      userInput = await convertSpeechToText(audioBuffer);
+      conversation.messages.push({
+        sender: 'user',
+        content: userInput,
+        timestamp: new Date(),
+        originalAudio: audioBuffer
+      });
+    } else {
+      conversation.messages.push({
+        sender: 'user',
+        content: userInput,
+        timestamp: new Date()
+      });
+    }
 
-              const client = createMetaClient();
-              const mediaResponse = await retry(
-                async () => {
-                  return await axios.get(
-                    `https://graph.facebook.com/v22.0/${mediaId}`,
-                    { headers: { 'Authorization': `Bearer ${client.token}` } }
-                  );
-                },
-                {
-                  retries: 3,
-                  factor: 2,
-                  minTimeout: 1000,
-                  onRetry: (err, attempt) => {
-                    logger.warn('Retrying media metadata fetch', { attempt, error: err.message });
-                  }
-                }
-              );
+    conversation.lastActivity = new Date();
+    await conversation.save();
 
-              const mediaUrl = mediaResponse.data.url;
-              logger.debug('Fetching media content', { mediaUrl });
+    const result = await generateMongoDBQuery(userInput, user._id, user.role, {
+      language: user.notificationPreferences.language,
+      activeSession: isActiveSession
+    });
 
-              const mediaContent = await retry(
-                async () => {
-                  return await axios.get(mediaUrl, {
-                    headers: { 'Authorization': `Bearer ${client.token}` },
-                    responseType: 'arraybuffer',
-                    timeout: 15000
-                  });
-                },
-                {
-                  retries: 3,
-                  factor: 2,
-                  minTimeout: 1000,
-                  onRetry: (err, attempt) => {
-                    logger.warn('Retrying media content fetch', { attempt, error: err.message });
-                  }
-                }
-              );
+    let response = result.response;
+    const conversationHistory = conversation.messages;
 
-              messageContent = await convertSpeechToText(mediaContent.data);
-              logger.info('Voice message transcribed', { transcription: messageContent });
-              await sendWhatsAppMessage(phoneNumber, `Voice message received: "${messageContent}". Processing...`);
-            } catch (speechErr) {
-              logger.error('Speech-to-text processing error', { error: speechErr.message });
-              await sendWhatsAppMessage(phoneNumber, 'Couldn’t process voice message. Please send text or try again later.');
-              continue;
-            }
-          } else {
-            logger.warn('Unsupported message type', { type: message.type });
-            await sendWhatsAppMessage(phoneNumber, 'Only text and voice messages are supported.');
-            continue;
-          }
-
-          let conversation = await Conversation.findOne({ user: user._id, active: true });
-          if (!conversation) {
-            conversation = new Conversation({
-              user: user._id,
-              platform: isVoiceMessage ? 'voice' : 'whatsapp',
-              messages: [],
-              context: {}
-            });
-            logger.info('Created new conversation', { userId: user._id });
-          }
-
-          conversation.messages.push({
-            sender: 'user',
-            content: messageContent,
-            originalAudio: isVoiceMessage ? message.audio.id : undefined
-          });
-
-          conversation.context = {
-            ...conversation.context,
-            userName: user.name,
-            userPosition: user.position || 'employee',
-            userDepartment: user.department || 'general',
-            lastInteraction: new Date().toISOString(),
-            userRole: user.role
-          };
-
-          conversation.lastActivity = Date.now();
-          await conversation.save();
-          logger.debug('Conversation updated', { conversationId: conversation._id });
-
-          let response;
-          try {
-            // Check for greeting messages
-            const greetings = ['hi', 'hello', 'hey', 'good morning', 'good evening'];
-            const isGreeting = greetings.some(g => messageContent.toLowerCase().startsWith(g));
-            if (isGreeting) {
-              response = await processWithAzureOpenAI(
-                `Greet ${user.name} and explain what the Employee Scheduling System can do for a ${user.role}.`,
-                conversation.messages.slice(-5),
-                user
-              );
-              logger.info('Sending welcome message', { userId: user._id });
-            } else {
-              // Generate MongoDB query
-              const queryResult = await generateMongoDBQuery(messageContent, user, modelSchemas, conversation.messages.slice(-5));
-              logger.debug('Query result from Azure OpenAI', { queryResult });
-
-              if (queryResult.error) {
-                response = await processWithAzureOpenAI(
-                  `Tell ${user.name} that their request couldn’t be processed due to a query issue and suggest trying again or contacting an admin.`,
-                  conversation.messages.slice(-5),
-                  user
-                );
-                logger.error('Query generation error', { error: queryResult.message });
-              } else if (queryResult.unclear && queryResult.help && queryResult.context) {
-                response = await generateHelpMessageForContext(user, queryResult.context, conversation.messages.slice(-5));
-                logger.info('Providing help message for context', { messageContent, context: queryResult.context });
-              } else if (queryResult.unclear && queryResult.help) {
-                response = await processWithAzureOpenAI(
-                  `Tell ${user.name} that their request is unclear, suggest clarifying with examples like "list my schedules" or "show user details", and offer a list of options if they ask "What can you do?"`,
-                  conversation.messages.slice(-5),
-                  user
-                );
-                logger.info('Providing help message for unclear query', { messageContent });
-              } else if (queryResult.unclear) {
-                response = await processWithAzureOpenAI(
-                  `Tell ${user.name} that their request is unclear and ask for clarification with examples like "list my schedules" or "show user details".`,
-                  conversation.messages.slice(-5),
-                  user
-                );
-                logger.warn('Unclear query', { messageContent });
-              } else if (queryResult.intent === 'send_announcement' && user.role === 'admin') {
-                const settings = await WhatsAppSettings.findOne();
-                if (!settings || !settings.enabled || !settings.templates?.general_announcement) {
-                  response = `Muni Sekhar, WhatsApp integration or general_announcement template is not configured.`;
-                  logger.warn('WhatsApp integration disabled or template missing');
-                } else {
-                  const template = settings.templates.general_announcement;
-                  const announcementText = queryResult.parameters?.message || 'No message provided';
-                  if (queryResult.parameters?.toAll) {
-                    const users = await User.find({ phone: { $ne: null }, 'notificationPreferences.whatsapp': true });
-                    let sentCount = 0;
-                    for (const notifyUser of users) {
-                      const parameters = [
-                        { type: 'text', text: notifyUser.name },
-                        { type: 'text', text: announcementText }
-                      ];
-                      await sendWhatsAppTemplate(notifyUser.phone, template.name, template.language, parameters);
-                      logger.info('Announcement sent to user', { userId: notifyUser._id, phone: notifyUser.phone });
-                      sentCount++;
-                    }
-                    response = `Muni Sekhar, announcement sent to ${sentCount} user(s)!`;
-                  } else if (queryResult.parameters?.targetUser) {
-                    const targetUser = await User.findOne({ 
-                      name: new RegExp(`^${queryResult.parameters.targetUser}$`, 'i'), 
-                      phone: { $ne: null },
-                      'notificationPreferences.whatsapp': true 
-                    });
-                    if (!targetUser) {
-                      response = `Muni Sekhar, I couldn't find a user named "${queryResult.parameters.targetUser}" with WhatsApp notifications enabled.`;
-                      logger.warn('User not found or WhatsApp disabled', { userName: queryResult.parameters.targetUser });
-                    } else {
-                      const parameters = [
-                        { type: 'text', text: targetUser.name },
-                        { type: 'text', text: announcementText }
-                      ];
-                      await sendWhatsAppTemplate(targetUser.phone, template.name, template.language, parameters);
-                      response = `Muni Sekhar, announcement sent to ${targetUser.name}!`;
-                      logger.info('Announcement sent to specific user', { userId: targetUser._id, phone: targetUser.phone });
-                    }
-                  } else {
-                    response = `Muni Sekhar, please clarify the recipient (e.g., a user name or "all").`;
-                  }
-                }
-              } else {
-                const { model, operation, query } = queryResult;
-                logger.info('Executing query', { model, operation, query });
-
-                let Model;
-                switch (model) {
-                  case 'user': Model = User; break;
-                  case 'schedule': Model = Schedule; break;
-                  case 'location': Model = Location; break;
-                  case 'conversation': Model = Conversation; break;
-                  case 'absence': Model = Absence; break;
-                  case 'hourTracking': Model = HourTracking; break;
-                  case 'whatsappSettings': Model = WhatsAppSettings; break;
-                  default:
-                    response = await processWithAzureOpenAI(
-                      `Tell ${user.name} that the model ${model} is invalid and suggest checking their request.`,
-                      conversation.messages.slice(-5),
-                      user
-                    );
-                    logger.error('Invalid model', { model });
-                    await sendWhatsAppMessage(phoneNumber, response);
-                    continue;
-                }
-
-                if (operation === 'read') {
-                  let results;
-                  if (query.pipeline && query.pipeline.length > 0) {
-                    results = await Model.aggregate(query.pipeline).exec();
-                  } else {
-                    results = await Model.find(query.filter || {}).populate(query.populate || []);
-                  }
-                  logger.debug('Query results', { count: results.length });
-
-                  if (results.length === 0) {
-                    response = await processWithAzureOpenAI(
-                      `Tell ${user.name} that no ${model} records were found and ask if they want to try a different query.`,
-                      conversation.messages.slice(-5),
-                      user
-                    );
-                  } else {
-                    const formattedResults = formatResults(model, results);
-                    response = await processWithAzureOpenAI(
-                      `Share these ${model} results with ${user.name} in a friendly, natural way and ask if they need anything else: ${formattedResults}`,
-                      conversation.messages.slice(-5),
-                      user
-                    );
-                  }
-                } else if (operation === 'write') {
-                  if (user.role !== 'admin' && !['absence'].includes(model)) {
-                    response = await processWithAzureOpenAI(
-                      `Tell ${user.name} that only admins can create ${model} records, and suggest contacting an admin.`,
-                      conversation.messages.slice(-5),
-                      user
-                    );
-                  } else {
-                    const result = await Model.create(query.data);
-                    response = await processWithAzureOpenAI(
-                      `Tell ${user.name} that a ${model} was created successfully with ID ${result._id} and ask if they need anything else.`,
-                      conversation.messages.slice(-5),
-                      user
-                    );
-                    logger.info('Write operation successful', { model, id: result._id });
-                  }
-                } else if (operation === 'update') {
-                  if (user.role !== 'admin' && !['absence'].includes(model)) {
-                    response = await processWithAzureOpenAI(
-                      `Tell ${user.name} that only admins can update ${model} records, and suggest contacting an admin.`,
-                      conversation.messages.slice(-5),
-                      user
-                    );
-                  } else {
-                    const result = await Model.findOneAndUpdate(query.filter, query.update, { new: true });
-                    if (!result) {
-                      response = await processWithAzureOpenAI(
-                        `Tell ${user.name} that no ${model} record was found to update and ask if they want to try again.`,
-                        conversation.messages.slice(-5),
-                        user
-                      );
-                    } else {
-                      if (model === 'absence') {
-                        const targetUser = await User.findById(result.user);
-                        const status = query.update.$set.status || 'updated';
-                        response = await processWithAzureOpenAI(
-                          `Tell ${user.name} that ${targetUser.name}'s absence request for ${result.startDate.toLocaleDateString()} was ${status} successfully and ask if they need anything else.`,
-                          conversation.messages.slice(-5),
-                          user
-                        );
-                      } else {
-                        response = await processWithAzureOpenAI(
-                          `Tell ${user.name} that the ${model} was updated successfully and ask if they need anything else.`,
-                          conversation.messages.slice(-5),
-                          user
-                        );
-                      }
-                      logger.info('Update operation successful', { model });
-                    }
-                  }
-                } else if (operation === 'delete') {
-                  if (user.role !== 'admin') {
-                    response = await processWithAzureOpenAI(
-                      `Tell ${user.name} that only admins can delete ${model} records, and suggest contacting an admin.`,
-                      conversation.messages.slice(-5),
-                      user
-                    );
-                  } else {
-                    const result = await Model.findOneAndDelete(query.filter);
-                    if (!result) {
-                      response = await processWithAzureOpenAI(
-                        `Tell ${user.name} that no ${model} record was found to delete and ask if they want to try again.`,
-                        conversation.messages.slice(-5),
-                        user
-                      );
-                    } else {
-                      response = await processWithAzureOpenAI(
-                        `Tell ${user.name} that the ${model} was deleted successfully and ask if they need anything else.`,
-                        conversation.messages.slice(-5),
-                        user
-                      );
-                      logger.info('Delete operation successful', { model });
-                    }
-                  }
-                } else {
-                  response = await processWithAzureOpenAI(
-                    `Tell ${user.name} that the operation isn’t supported and suggest trying something like "list schedules" or "create absence".`,
-                    conversation.messages.slice(-5),
-                    user
-                  );
-                  logger.error('Unsupported operation', { operation });
-                }
-              }
-            }
-          } catch (aiErr) {
-            logger.error('AI processing error', { error: aiErr.message, stack: aiErr.stack });
-            response = await processWithAzureOpenAI(
-              `Tell ${user.name} that their request couldn’t be processed due to an internal error and suggest trying again or contacting an admin.`,
-              conversation.messages.slice(-5),
-              user
-            );
-          }
-
-          conversation.messages.push({ sender: 'system', content: response });
-          conversation.lastActivity = Date.now();
-          await conversation.save();
-          logger.debug('Conversation updated with response', { conversationId: conversation._id });
-
-          await sendWhatsAppMessage(phoneNumber, response);
-          logger.info('Response sent', { phoneNumber, response });
-        }
+    if (result.confirmationRequired) {
+      conversation.context.confirmation = { intent: result.intent, model: result.model, query: result.query };
+      await conversation.save();
+    } else if (userInput.toLowerCase() === 'yes' && conversation.context.confirmation) {
+      const { intent, model, query } = conversation.context.confirmation;
+      const Model = mongoose.model(model);
+      let queryResult;
+      if (intent === 'delete') {
+        queryResult = await Model.findOneAndDelete(query);
+      } else if (intent === 'update') {
+        queryResult = await Model.findOneAndUpdate(query.filter, query.update, { new: true });
       }
+      response = await processWithAzureOpenAI(
+        `Generate a response for ${intent} ${model}`,
+        conversationHistory,
+        user,
+        { intent, queryResult, language: result.language, userRole: user.role, conversationContext: conversation.context }
+      );
+      conversation.context.confirmation = null;
+      await conversation.save();
+    } else if (result.intent === 'traffic' && result.action) {
+      // Assume getTrafficData exists in traffic.js
+      const trafficData = await require('../../utils/trafficService').getTrafficData(result.action.coordinates);
+      response = await processWithAzureOpenAI(
+        `Generate a response for traffic data`,
+        conversationHistory,
+        user,
+        { intent: 'traffic', queryResult: trafficData, language: result.language, userRole: user.role, conversationContext: conversation.context }
+      );
+    } else if (result.intent === 'briefing') {
+      const schedules = await Schedule.aggregate(result.query);
+      response = await processWithAzureOpenAI(
+        `Generate a response for daily briefing`,
+        conversationHistory,
+        user,
+        { intent: 'briefing', queryResult: schedules, language: result.language, userRole: user.role, conversationContext: conversation.context }
+      );
+    } else if (result.intent === 'hours') {
+      const hours = await HourTracking.aggregate(result.query);
+      response = await processWithAzureOpenAI(
+        `Generate a response for hours report`,
+        conversationHistory,
+        user,
+        { intent: 'hours', queryResult: hours, language: result.language, userRole: user.role, conversationContext: conversation.context }
+      );
+    } else if (result.intent === 'message' && result.action?.type === 'sendTemplate') {
+      await sendWhatsAppTemplate(phoneNumber, result.action.template, result.action.parameters);
+      response = result.language === 'fr' ? 'Message envoyé avec succès !' : 'Message sent successfully!';
+    } else if (result.query) {
+      const Model = mongoose.model(result.model);
+      let queryResult;
+      if (result.intent === 'read') {
+        queryResult = await Model.find(result.query).populate('location assignedEmployees');
+      } else if (result.intent === 'create') {
+        const doc = new Model(result.query);
+        queryResult = await doc.save();
+        if (result.action?.type === 'awaitReplacement') {
+          result.action.absenceId = doc._id; // Update absenceId
+          conversation.context.replacement = result.action;
+          await conversation.save();
+        }
+      } else if (result.intent === 'update') {
+        queryResult = await Model.findOneAndUpdate(result.query.filter, result.query.update, { new: true });
+      }
+      response = await processWithAzureOpenAI(
+        `Generate a response for ${result.intent} ${result.model}`,
+        conversationHistory,
+        user,
+        { intent: result.intent, queryResult, language: result.language, userRole: user.role, conversationContext: conversation.context }
+      );
     }
-  } catch (err) {
-    logger.error('Webhook processing error', { error: err.message, stack: err.stack });
+
+    if (!isActiveSession && result.intent !== 'message') {
+      await sendWhatsAppTemplate(phoneNumber, 'general_announcement', [response]);
+    } else {
+      await sendWhatsAppMessage(phoneNumber, response);
+    }
+
+    conversation.messages.push({
+      sender: 'system',
+      content: response,
+      timestamp: new Date(),
+      processed: true
+    });
+    await conversation.save();
+
+    logger.info('WhatsApp command processed', { userId: user._id, input: userInput, response, language: result.language });
+    res.sendStatus(200);
+  } catch (error) {
+    logger.error('Webhook error', { error: error.message, stack: error.stack });
+    await sendWhatsAppMessage(phoneNumber, 'Sorry, something went wrong. Please try again.');
+    res.sendStatus(500);
+  }
+});router.post('/webhook', async (req, res) => {
+  try {
+    const body = req.body;
+    if (!body.entry || !body.entry[0].changes || !body.entry[0].changes[0].value.messages) {
+      return res.sendStatus(400);
+    }
+
+    const message = body.entry[0].changes[0].value.messages[0];
+    const phoneNumber = body.entry[0].changes[0].value.contacts[0].wa_id;
+    const user = await User.findOne({ phone: phoneNumber });
+
+    if (!user) {
+      await sendWhatsAppMessage(phoneNumber, 'Please register with the system first.');
+      return res.sendStatus(200);
+    }
+
+    let conversation = await Conversation.findOne({ user: user._id, active: true });
+    if (!conversation) {
+      conversation = new Conversation({ user: user._id, platform: 'whatsapp' });
+    }
+
+    const isActiveSession = conversation.lastActivity > new Date(Date.now() - 24 * 60 * 60 * 1000);
+    let userInput = message.type === 'text' ? message.text.body : null;
+
+    if (message.type === 'audio') {
+      const audioId = message.audio.id;
+      const audioBuffer = await downloadAudio(audioId);
+      userInput = await convertSpeechToText(audioBuffer);
+      conversation.messages.push({
+        sender: 'user',
+        content: userInput,
+        timestamp: new Date(),
+        originalAudio: audioBuffer
+      });
+    } else {
+      conversation.messages.push({
+        sender: 'user',
+        content: userInput,
+        timestamp: new Date()
+      });
+    }
+
+    conversation.lastActivity = new Date();
+    await conversation.save();
+
+    const result = await generateMongoDBQuery(userInput, user._id, user.role, {
+      language: user.notificationPreferences.language,
+      activeSession: isActiveSession
+    });
+
+    let response = result.response;
+
+    if (result.confirmationRequired) {
+      conversation.context.confirmation = { intent: result.intent, model: result.model, query: result.query };
+      await conversation.save();
+    } else if (userInput.toLowerCase() === 'yes' && conversation.context.confirmation) {
+      const { intent, model, query } = conversation.context.confirmation;
+      const Model = mongoose.model(model);
+      let queryResult;
+      if (intent === 'delete') {
+        queryResult = await Model.findOneAndDelete(query);
+      } else if (intent === 'update') {
+        queryResult = await Model.findOneAndUpdate(query.filter, query.update, { new: true });
+      }
+      response = await generateConversationalResponse(queryResult, intent, user.role, user._id, result.language, conversation.context);
+      conversation.context.confirmation = null;
+      await conversation.save();
+    } else if (result.intent === 'traffic' && result.action) {
+      const trafficData = await getTrafficData(result.action.coordinates);
+      response = await generateConversationalResponse(trafficData, 'traffic', user.role, user._id, result.language, conversation.context);
+    } else if (result.intent === 'briefing') {
+      const schedules = await Schedule.aggregate(result.query);
+      response = await generateConversationalResponse(schedules, 'briefing', user.role, user._id, result.language, conversation.context);
+    } else if (result.intent === 'hours') {
+      const hours = await HourTracking.aggregate(result.query);
+      response = await generateConversationalResponse(hours, 'hours', user.role, user._id, result.language, conversation.context);
+    } else if (result.intent === 'message' && result.action?.type === 'sendTemplate') {
+      await sendWhatsAppTemplate(phoneNumber, result.action.template, result.action.parameters);
+      response = result.language === 'fr' ? 'Message envoyé avec succès !' : 'Message sent successfully!';
+    } else if (result.query) {
+      const Model = mongoose.model(result.model);
+      let queryResult;
+      if (result.intent === 'read') {
+        queryResult = await Model.find(result.query).populate('location assignedEmployees');
+      } else if (result.intent === 'create') {
+        const doc = new Model(result.query);
+        queryResult = await doc.save();
+      } else if (result.intent === 'update') {
+        queryResult = await Model.findOneAndUpdate(result.query.filter, query.update, { new: true });
+      }
+      response = await generateConversationalResponse(queryResult, result.intent, user.role, user._id, result.language, conversation.context);
+    }
+
+    if (!isActiveSession && result.intent !== 'message') {
+      await sendWhatsAppTemplate(phoneNumber, 'general_announcement', [response]);
+    } else {
+      await sendWhatsAppMessage(phoneNumber, response);
+    }
+
+    conversation.messages.push({
+      sender: 'system',
+      content: response,
+      timestamp: new Date(),
+      processed: true
+    });
+    await conversation.save();
+
+    logger.info('WhatsApp command processed', { userId: user._id, input: userInput, response, language: result.language });
+
+    res.sendStatus(200);
+  } catch (error) {
+    logger.error('Webhook error', { error: error.message, stack: error.stack });
+    await sendWhatsAppMessage(phoneNumber, 'Sorry, something went wrong. Please try again.');
+    res.sendStatus(500);
   }
 });
 
@@ -435,7 +391,7 @@ const createMetaClient = () => {
   return {
     token,
     phoneNumberId,
-    apiUrl: `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`
+    apiUrl: `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`
   };
 };
 
@@ -719,5 +675,59 @@ router.put('/settings/update', [auth, admin], async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
+
+const generateHumanLikeResponse = async (queryResult, intent, userRole, userId, language, conversationContext) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user) throw new Error('User not found');
+
+    // Prepare prompt for human-like response
+    const prompt = `
+You are a conversational AI assistant for an Employee Scheduling System on WhatsApp. Your task is to transform MongoDB query results into a human-like, friendly response. The response should:
+
+- Be conversational, natural, and concise.
+- Use the user's preferred language (${language}).
+- Tailor the tone based on user role (${userRole}): formal for admins, friendly for employees.
+- Include relevant details from the query result (e.g., schedule titles, dates, locations, names).
+- Handle empty results gracefully (e.g., "Looks like you have no shifts today!").
+- Avoid technical jargon (e.g., don't mention "ObjectId" or "query").
+
+**Intent**: ${intent}
+**Query Result**: ${JSON.stringify(queryResult, null, 2)}
+**Language**: ${language} (use English for 'en', French for 'fr')
+**User Role**: ${userRole}
+**Context**: ${JSON.stringify(conversationContext)}
+
+**Examples**:
+- Intent: read, Model: Schedule, Result: [{ title: "Morning Shift", date: "2025-06-06", startTime: "09:00", location: { name: "HQ" } }], Language: en
+  Output: "Hey, you have the Morning Shift tomorrow at HQ starting at 9 AM!"
+- Intent: read, Model: Schedule, Result: [], Language: en
+  Output: "Looks like you have no shifts scheduled today. Enjoy your day off!"
+- Intent: create, Model: Absence, Result: { _id: "123", user: "John", startDate: "2025-06-06", status: "pending" }, Language: en
+  Output: "Got it, John! Your absence request for tomorrow is submitted and pending approval."
+- Intent: read, Model: Schedule, Result: [{ title: "Shift", date: "2025-06-06", startTime: "08:00", location: { name: "Downtown" } }], Language: fr
+  Output: "Salut ! Tu as un shift demain à Downtown à 8h00."
+
+Generate a human-like response based on the query result, intent, role, and language.
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: `Generate a response for the provided query result.` }
+      ],
+      max_tokens: 150
+    });
+
+    const response = completion.choices[0].message.content.trim();
+    logger.info('Human-like response generated', { intent, userId, language, response });
+
+    return response;
+  } catch (error) {
+    logger.error('Failed to generate human-like response', { error: error.message, stack: error.stack });
+    return language === 'fr' ? 'Désolé, une erreur s’est produite. Veuillez réessayer.' : 'Sorry, something went wrong. Please try again.';
+  }
+};
 
 module.exports = router;

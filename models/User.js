@@ -48,7 +48,8 @@ const UserSchema = new Schema({
     briefingTime: {
       type: String,
       default: '08:00' // 24-hour format
-    }
+    },
+    language: { type: String, enum: ['en', 'fr'], default: 'en' }
   },
   hourTrackingEnabled: {
     type: Boolean,

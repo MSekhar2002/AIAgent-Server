@@ -72,17 +72,23 @@ const withTimeout = (promise, ms) => {
   return Promise.race([promise, timeout]);
 };
 
-exports.convertSpeechToText = async (audioBuffer, retries = 2) => {
+exports.convertSpeechToText = async (audioBuffer, retries = 3) => {
   for (let attempt = 1; attempt <= retries + 1; attempt++) {
     try {
       logger.debug('Starting speech-to-text conversion', { attempt, bufferSize: audioBuffer.length });
+
+      // Validate buffer size
+      if (audioBuffer.length < 1000) { // Minimum reasonable size for audio
+        logger.error('Audio buffer too small', { size: audioBuffer.length });
+        throw new Error('Invalid audio buffer');
+      }
 
       // Convert audio to WAV format
       const wavBuffer = await convertToWav(audioBuffer);
       logger.debug('Audio converted to WAV', { wavSize: wavBuffer.length });
 
       // Validate WAV buffer
-      if (wavBuffer.length < 44) { // Minimum WAV header size
+      if (wavBuffer.length < 44) {
         logger.error('Invalid WAV buffer', { size: wavBuffer.length });
         throw new Error('Invalid WAV file');
       }
@@ -128,11 +134,12 @@ exports.convertSpeechToText = async (audioBuffer, retries = 2) => {
         );
       });
 
-      return await withTimeout(recognitionPromise, 10000); // 10s timeout
+      return await withTimeout(recognitionPromise, 15000); // 15s timeout
     } catch (error) {
       logger.error('Speech-to-text attempt failed', { attempt, error: error.message, stack: error.stack });
       if (attempt > retries) {
-        throw new Error(`Speech-to-text failed after ${retries} retries: ${error.message}`);
+        logger.warn('Falling back to text prompt');
+        return 'Voice recognition failed. Please send a text message.';
       }
       logger.info('Retrying speech-to-text', { attempt });
     }

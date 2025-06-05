@@ -45,51 +45,29 @@ const sendWhatsAppMessage = async (to, message) => {
   }
 };
 
-const sendWhatsAppTemplate = async (to, templateName, languageCode, parameters) => {
+const sendWhatsAppTemplate = async (phoneNumber, templateName, parameters) => {
   try {
-    const client = createMetaClient();
-    const formattedTo = to.replace('whatsapp:', '');
-
-    const components = [];
-    if (parameters) {
-      const paramArray = Array.isArray(parameters)
-        ? parameters
-        : Object.entries(parameters).map(([key, value]) => ({
-            parameter_name: key,
-            type: 'text',
-            text: value
-          }));
-
-      components.push({
-        type: 'body',
-        parameters: paramArray
-      });
+    const metaClient = createMetaClient();
+    if (!parameters.every(p => typeof p === 'string')) {
+      logger.error('Invalid template parameters', { parameters });
+      throw new Error('Template parameters must be strings');
     }
-
-    const response = await axios.post(
-      client.apiUrl,
-      {
-        messaging_product: 'whatsapp',
-        to: formattedTo,
-        type: 'template',
-        template: {
-          name: templateName,
-          language: { code: languageCode },
-          components
-        }
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${client.token}`,
-          'Content-Type': 'application/json'
-        }
+    const response = await axios.post(metaClient.apiUrl, {
+      messaging_product: 'whatsapp',
+      to: phoneNumber,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: 'en' },
+        components: [{ type: 'body', parameters: parameters.map(p => ({ type: 'text', text: p })) }]
       }
-    );
-
-    console.log('WhatsApp template message sent:', response.data.messages?.[0]?.id || response.data);
+    }, {
+      headers: { Authorization: `Bearer ${metaClient.token}` }
+    });
+    logger.info('WhatsApp template sent', { phoneNumber, templateName });
     return response.data;
   } catch (error) {
-    console.error('WhatsApp template sending error:', error.response?.data || error.message);
+    logger.error('Failed to send WhatsApp template', { error: error.message, stack: error.stack });
     throw error;
   }
 };
