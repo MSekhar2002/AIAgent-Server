@@ -15,7 +15,12 @@ app.get('/', (req, res) => {
 
 // Middleware
 app.use(express.json({ extended: false }));
-app.use(cors());
+const corsOptions = {
+  origin: 'https://ai-agent-psi-six.vercel.app',
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 
 // Connect to MongoDB
 mongoose
