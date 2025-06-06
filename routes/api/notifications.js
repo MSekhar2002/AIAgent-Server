@@ -299,9 +299,10 @@ router.put('/:id/read', auth, async (req, res) => {
     if (!notification) {
       return res.status(404).json({ msg: 'Notification not found' });
     }
+    const user = await User.findById(req.user.id);
     
     // Check if user is the recipient
-    if (notification.recipient.toString() !== req.user.id) {
+    if (notification.recipient.toString() !== req.user.id && user.role != 'admin') {
       return res.status(403).json({ msg: 'Not authorized to update this notification' });
     }
     

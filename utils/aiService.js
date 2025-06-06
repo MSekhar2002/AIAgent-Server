@@ -1,9 +1,10 @@
 const { AzureOpenAI } = require('openai');
 const winston = require('winston');
 const Ajv = require('ajv');
-const User = require('../models/User');
 const ajv = new Ajv();
-
+const User = require('../models/User');
+const Location = require('../models/Location');
+const mongoose = require('mongoose'); 
 // Logger setup
 const logger = winston.createLogger({
   level: 'debug',
@@ -149,15 +150,19 @@ Based on the user's query, generate a MongoDB query or aggregation pipeline. Rul
 13. If the query is 'who am I', return a read query for the User model with filter { _id: ${user._id} }.
 14. Include all fields for 'all details' queries and populate references.
 15. Ensure pipeline is non-empty if aggregation is used; otherwise, use filter with find.
-- Intent: send_announcement
+16. For schedule creation queries (e.g., "Create a schedule for <employee names> at <location> on <date> from <start time> to <end time>"), resolve employee names to User _ids and location name to Location _id by querying the respective models case-insensitively. Include any notes in the description field.
+17. For schedule creation, set createdBy to the current user's _id, status to 'scheduled', and include default values for optional fields like notificationOptions.
+18. For reference fields like location and assignedEmployees in the Schedule model, provide ObjectIds as strings (e.g., "67efab9372692e5936f97788"), not $lookup operations. Do NOT include $lookup in the data object for write operations; $lookup is only for aggregation pipelines.
+- intent: send_announcement
   Description: Admin wants to send a general announcement to a specific user or all users.
   Parameters:
     - toAll: boolean (true if targeting all users, false otherwise)
     - targetUser: string (name of specific user, if not toAll)
     - message: string (announcement content)
-  Example: "Notify Aryu about meeting" -> { intent: "send_announcement", parameters: { toAll: false, targetUser: "Aryu", message: "Team meeting at 10 AM" } }
-  Example: "Tell everyone office closed" -> { intent: "send_announcement", parameters: { toAll: true, message: "Office closed tomorrow" } }
-
+    - include data 
+  - Examples: "Notify Aryu about meeting" -> { intent: "send_announcement", parameters: { toAll: false, targetUser: "Aryu", message: "Team meeting at 10 AM" } }
+             "Tell everyone office closed" -> { intent: "send_announcement", parameters: { toAll: true, message: "Office closed tomorrow" } }
+19. For intent: send_announcement, no need of model operation n query object, only intent and parameters are needed in the JSON
 Return JSON object:
 {
   "model": "string",
@@ -167,8 +172,14 @@ Return JSON object:
     "filter": {} (required, for absence updates use { user: user_id, status: 'pending' } if no absence_id, else { _id }),
     "populate": [] (optional, use ['user', 'approvedBy'] for absence),
     "data": {} (for write),
-    "update": {} (for update)
-  }
+    "update": {} (for update),
+    "employeeNames": [] (optional, array of employee names for schedule creation r updation only),
+    "locationName": "" (optional, location name for schedule creation r updation only)
+  },
+  "intent": "send_announcement" (optional, Admin wants to send a general announcement to a specific user or all users, only for sending messages or notifting, eg. prompt-> "Notify Aryu about meeting" ->eg. field in JSON { intent: "send_announcement", parameters: { toAll: false, targetUser: "Aryu", message: "Team meeting at 10 AM" } }
+             "Tell everyone office closed" -> { intent: "send_announcement", parameters: { toAll: true, message: "Office closed tomorrow" } })
+  "parameters": "send_announcement" (optional, Admin wants to send a general announcement to a specific user or all users, only for sending messages or notifting, eg. prompt-> "Notify Aryu about meeting" ->eg. field in JSON { intent: "send_announcement", parameters: { toAll: false, targetUser: "Aryu", message: "Team meeting at 10 AM" } }
+             "Tell everyone office closed" -> { intent: "send_announcement", parameters: { toAll: true, message: "Office closed tomorrow" } })
 }
 For absence approve/reject, set status to 'approved' or 'rejected', approvedBy to user._id, and updatedAt to current date. If an employee name is provided (e.g., "Approve Aryu's absence"), query the User model by name to get the user ID and use it in the filter (e.g., { user: targetUser._id, status: 'pending' }). If no name or ID, use the current user's ID.Or, for unclear/help queries:
 {
@@ -190,6 +201,27 @@ For absence approve/reject, set status to 'approved' or 'rejected', approvedBy t
     };
 
     const schema = {
+      allOf: [
+        {
+          if: {
+            properties: { operation: { const: 'write' } }
+          },
+          then: {
+            properties: {
+              query: {
+                required: ['data']
+              }
+            }
+          },
+          else: {
+            properties: {
+              query: {
+                required: ['filter']
+              }
+            }
+          }
+        }
+      ],
       oneOf: [
         {
           type: 'object',
@@ -205,8 +237,7 @@ For absence approve/reject, set status to 'approved' or 'rejected', approvedBy t
                 data: { type: 'object' },
                 update: { type: 'object' },
                 employeeName: { type: 'string' }
-              },
-              required: ['filter']
+              }
             }
           },
           required: ['model', 'operation', 'query']
@@ -214,14 +245,41 @@ For absence approve/reject, set status to 'approved' or 'rejected', approvedBy t
         {
           type: 'object',
           properties: {
+            intent: { type: 'string', const: 'send_announcement' },
+            parameters: {
+              type: 'object',
+              properties: {
+                toAll: { type: 'boolean' },
+                targetUser: { type: 'string', nullable: true },
+                message: { type: 'string' }
+              },
+              required: ['message'],
+              oneOf: [
+                { properties: { toAll: { const: true } }, required: ['toAll'] },
+                { properties: { targetUser: { type: 'string' } }, required: ['targetUser'] }
+              ]
+            }
+          },
+          required: ['intent', 'parameters']
+        },
+        {
+          type: 'object',
+          properties: {
             unclear: { type: 'boolean', enum: [true] },
             help: { type: 'boolean', enum: [true] },
-            context: { type: 'string', pattern: '^(create|update)_(user|schedule|location|absence|hourTracking|conversation|whatsappSettings)$', nullable: true }
+            context: {
+              type: 'string',
+              pattern: '^(create|update)_(user|schedule|location|absence|hourTracking|conversation|whatsappSettings)$',
+              nullable: true
+            },
+            missingFields: { type: 'array', items: { type: 'string' } },
+            message: { type: 'string', nullable: true }
           },
           required: ['unclear', 'help']
         }
       ]
     };
+    
 
     let response;
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -244,6 +302,66 @@ For absence approve/reject, set status to 'approved' or 'rejected', approvedBy t
           if (parsed.intent === 'send_announcement') {
             logger.info('Announcement intent detected', { parameters: parsed.parameters });
             return parsed;
+          }
+          if (parsed.model === 'schedule' && parsed.operation === 'write') {
+            const { employeeNames, locationName } = parsed.query;
+
+            if (employeeNames && locationName) {
+              // Resolve employee IDs
+              const employees = await User.find({
+                name: { $in: employeeNames.map(name => new RegExp(`^${name}$`, 'i')) }
+              });
+              if (employees.length !== employeeNames.length) {
+                const foundNames = employees.map(emp => emp.name);
+                const missing = employeeNames.filter(name => !foundNames.includes(name));
+                logger.warn('Some employees not found', { missing });
+                return { error: true, message: `Employees not found: ${missing.join(', ')}` };
+              }
+              const employeeIds = employees.map(emp => emp._id);
+
+              // Resolve location ID
+              const location = await Location.findOne({
+                name: new RegExp(`^${locationName}$`, 'i')
+              });
+              if (!location) {
+                logger.warn('Location not found', { locationName });
+                return { error: true, message: `Location "${locationName}" not found` };
+              }
+
+              // Parse date and times
+              const dateMatch = message.match(/\d{4}-\d{2}-\d{2}/);
+              const date = dateMatch ? new Date(dateMatch[0]) : new Date();
+              const startTime = new Date(`${dateMatch[0]}T09:00:00Z`);
+              const endTime = new Date(`${dateMatch[0]}T17:00:00Z`);
+              const note = message.match(/note:\s*['"]([^'"]+)['"]/i)?.[1] || '';
+
+              // Build the schedule data
+              parsed.query.data = {
+                title: `Schedule for ${employeeNames.join(', ')}`,
+                description: note,
+                date,
+                startTime,
+                endTime,
+                startTimeString: '9:00 AM',
+                endTimeString: '5:00 PM',
+                location: location._id,
+                assignedEmployees: employeeIds,
+                createdBy: user._id,
+                notificationSent: false,
+                notificationOptions: {
+                  sendEmail: true,
+                  sendWhatsapp: false,
+                  reminderTime: 24
+                },
+                status: 'scheduled',
+                requireHourTracking: true,
+                allowAutoReplacement: false,
+                createdAt: new Date(),
+                updatedAt: new Date()
+              };
+
+              logger.info('Schedule query updated with resolved IDs', { data: parsed.query.data });
+            }
           }
           if (parsed.model === 'absence' && parsed.operation === 'update') {
             const isReject = message.toLowerCase().includes('reject');

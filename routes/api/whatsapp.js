@@ -13,7 +13,7 @@ const Conversation = require('../../models/Conversation');
 const Absence = require('../../models/Absence');
 const HourTracking = require('../../models/HourTracking');
 const WhatsAppSettings = require('../../models/WhatsAppSettings');
-const { sendWhatsAppMessage } = require('../../utils/whatsappService');
+const { sendWhatsAppMessage, sendWhatsAppTemplate } = require('../../utils/whatsappService');
 const { processWithAzureOpenAI, generateMongoDBQuery } = require('../../utils/aiService');
 const { convertSpeechToText } = require('../../utils/speechService');
 
@@ -233,20 +233,20 @@ router.post('/webhook', async (req, res) => {
                 logger.warn('Unclear query', { messageContent });
               } else if (queryResult.intent === 'send_announcement' && user.role === 'admin') {
                 const settings = await WhatsAppSettings.findOne();
-                if (!settings || !settings.enabled || !settings.templates?.general_announcement) {
-                  response = `Muni Sekhar, WhatsApp integration or general_announcement template is not configured.`;
+                if (!settings || !settings.enabled || !settings.templates?.generalAnnouncement) {
+                  response = `Muni Sekhar, WhatsApp integration or generalAnnouncement template is not configured.`;
                   logger.warn('WhatsApp integration disabled or template missing');
                 } else {
-                  const template = settings.templates.general_announcement;
+                  const template = settings.templates.generalAnnouncement;
                   const announcementText = queryResult.parameters?.message || 'No message provided';
                   if (queryResult.parameters?.toAll) {
                     const users = await User.find({ phone: { $ne: null }, 'notificationPreferences.whatsapp': true });
                     let sentCount = 0;
                     for (const notifyUser of users) {
-                      const parameters = [
-                        { type: 'text', text: notifyUser.name },
-                        { type: 'text', text: announcementText }
-                      ];
+                      const parameters = {
+                        user_name: notifyUser.name,
+                        announcement_message: announcementText
+                      };
                       await sendWhatsAppTemplate(notifyUser.phone, template.name, template.language, parameters);
                       logger.info('Announcement sent to user', { userId: notifyUser._id, phone: notifyUser.phone });
                       sentCount++;
@@ -262,10 +262,11 @@ router.post('/webhook', async (req, res) => {
                       response = `Muni Sekhar, I couldn't find a user named "${queryResult.parameters.targetUser}" with WhatsApp notifications enabled.`;
                       logger.warn('User not found or WhatsApp disabled', { userName: queryResult.parameters.targetUser });
                     } else {
-                      const parameters = [
-                        { type: 'text', text: targetUser.name },
-                        { type: 'text', text: announcementText }
-                      ];
+                     
+                      const parameters = {
+                        user_name: targetUser.name,
+                        announcement_message: queryResult.parameters?.message || 'No message provided' 
+                      };
                       await sendWhatsAppTemplate(targetUser.phone, template.name, template.language, parameters);
                       response = `Muni Sekhar, announcement sent to ${targetUser.name}!`;
                       logger.info('Announcement sent to specific user', { userId: targetUser._id, phone: targetUser.phone });
@@ -666,7 +667,7 @@ router.get('/conversations', [auth, admin], async (req, res) => {
   logger.debug('Fetching conversations');
   try {
     const conversations = await Conversation.find()
-      .populate('user', 'name', 'email', 'phone')
+      .populate('user', 'name email phone')
       .sort({ createdAt: -1 });
     logger.info('Conversations retrieved', { count: conversations.length });
     res.json(conversations);

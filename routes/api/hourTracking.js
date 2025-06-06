@@ -8,6 +8,31 @@ const User = require('../../models/User');
 const Location = require('../../models/Location');
 const { getTrafficData } = require('../../utils/mapsService');
 
+
+// @route   GET api/hour-tracking
+// @desc    Get all hour tracking records (admin or authorized user)
+// @access  Private
+router.get('/', auth, async (req, res) => {
+  try {
+    // Build query based on user role
+    const query = {};
+    if (req.user.role !== 'admin') {
+      query.user = req.user.id; // Non-admins can only see their own records
+    }
+
+    const hourTrackings = await HourTracking.find(query)
+      .populate('user', 'name email')
+      .populate('schedule', 'title date startTime endTime')
+      .populate('location', 'name address city')
+      .sort({ date: -1 });
+
+    res.json(hourTrackings);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
 // @route   POST api/hour-tracking/clock-in
 // @desc    Clock in for a schedule
 // @access  Private

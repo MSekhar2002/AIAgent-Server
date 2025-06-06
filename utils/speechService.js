@@ -32,12 +32,22 @@ const createSpeechClient = () => {
 
   const speechConfig = sdk.SpeechConfig.fromSubscription(subscriptionKey, region);
   speechConfig.speechRecognitionLanguage = 'en-US';
+
+  // ⬇️ Extend silence timeout to avoid premature timeout
   speechConfig.setProperty(
     sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs,
-    "45000" 
+    "60000" // 60 seconds
   );
+
+  // ⬇️ Extend end silence timeout if needed (optional)
+  speechConfig.setProperty(
+    sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs,
+    "2000" // 2 seconds
+  );
+
   return speechConfig;
 };
+
 
 const convertToWav = (audioBuffer) => {
   return new Promise((resolve, reject) => {
