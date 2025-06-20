@@ -30,14 +30,83 @@ router.post('/', [auth, admin], async (req, res) => {
     if (!locationDoc) {
       return res.status(404).json({ msg: 'Location not found' });
     }
+    
+    // Parse time strings into Date objects
+    let parsedStartTime, parsedEndTime;
+    
+    try {
+      // Parse date string
+      const scheduleDate = new Date(date);
+      
+      // Parse startTime
+      if (typeof startTime === 'string') {
+        // Remove extra spaces and normalize format
+        const cleanStartTime = startTime.replace(/\s+/g, ' ').trim();
+        // Extract hours, minutes, and period
+        const startMatch = cleanStartTime.match(/^(\d+)[\.:]?(\d*)\s*(AM|PM)$/i);
+        
+        if (startMatch) {
+          let [_, hours, minutes, period] = startMatch;
+          hours = parseInt(hours);
+          minutes = minutes ? parseInt(minutes) : 0;
+          
+          // Adjust hours for PM
+          if (period.toUpperCase() === 'PM' && hours < 12) {
+            hours += 12;
+          } else if (period.toUpperCase() === 'AM' && hours === 12) {
+            hours = 0;
+          }
+          
+          parsedStartTime = new Date(scheduleDate);
+          parsedStartTime.setHours(hours, minutes, 0, 0);
+        } else {
+          return res.status(400).json({ msg: 'Invalid start time format. Please use format like "9:00 AM"' });
+        }
+      } else {
+        parsedStartTime = new Date(startTime);
+      }
+      
+      // Parse endTime
+      if (typeof endTime === 'string') {
+        // Remove extra spaces and normalize format
+        const cleanEndTime = endTime.replace(/\s+/g, ' ').trim();
+        // Extract hours, minutes, and period
+        const endMatch = cleanEndTime.match(/^(\d+)[\.:]?(\d*)\s*(AM|PM)$/i);
+        
+        if (endMatch) {
+          let [_, hours, minutes, period] = endMatch;
+          hours = parseInt(hours);
+          minutes = minutes ? parseInt(minutes) : 0;
+          
+          // Adjust hours for PM
+          if (period.toUpperCase() === 'PM' && hours < 12) {
+            hours += 12;
+          } else if (period.toUpperCase() === 'AM' && hours === 12) {
+            hours = 0;
+          }
+          
+          parsedEndTime = new Date(scheduleDate);
+          parsedEndTime.setHours(hours, minutes, 0, 0);
+        } else {
+          return res.status(400).json({ msg: 'Invalid end time format. Please use format like "5:00 PM"' });
+        }
+      } else {
+        parsedEndTime = new Date(endTime);
+      }
+    } catch (parseError) {
+      console.error('Time parsing error:', parseError);
+      return res.status(400).json({ msg: 'Error parsing date/time values' });
+    }
 
     // Create new schedule
     const newSchedule = new Schedule({
       title,
       description,
       date,
-      startTime,
-      endTime,
+      startTime: parsedStartTime,
+      endTime: parsedEndTime,
+      startTimeString: startTime,
+      endTimeString: endTime,
       location,
       assignedEmployees: assignedEmployees || [],
       notificationOptions: notificationOptions || {
@@ -255,8 +324,76 @@ router.put('/:id', [auth, admin], async (req, res) => {
     if (title) scheduleFields.title = title;
     if (description !== undefined) scheduleFields.description = description;
     if (date) scheduleFields.date = date;
-    if (startTime) scheduleFields.startTime = startTime;
-    if (endTime) scheduleFields.endTime = endTime;
+    
+    // Parse time strings if provided
+    let scheduleDate = date ? new Date(date) : new Date(schedule.date);
+    
+    // Handle startTime
+    if (startTime) {
+      if (typeof startTime === 'string') {
+        // Remove extra spaces and normalize format
+        const cleanStartTime = startTime.replace(/\s+/g, ' ').trim();
+        // Extract hours, minutes, and period
+        const startMatch = cleanStartTime.match(/^(\d+)[\.:]?(\d*)\s*(AM|PM)$/i);
+        
+        if (startMatch) {
+          let [_, hours, minutes, period] = startMatch;
+          hours = parseInt(hours);
+          minutes = minutes ? parseInt(minutes) : 0;
+          
+          // Adjust hours for PM
+          if (period.toUpperCase() === 'PM' && hours < 12) {
+            hours += 12;
+          } else if (period.toUpperCase() === 'AM' && hours === 12) {
+            hours = 0;
+          }
+          
+          const parsedStartTime = new Date(scheduleDate);
+          parsedStartTime.setHours(hours, minutes, 0, 0);
+          scheduleFields.startTime = parsedStartTime;
+          scheduleFields.startTimeString = startTime;
+        } else {
+          return res.status(400).json({ msg: 'Invalid start time format. Please use format like "9:00 AM"' });
+        }
+      } else {
+        scheduleFields.startTime = new Date(startTime);
+        scheduleFields.startTimeString = startTime;
+      }
+    }
+    
+    // Handle endTime
+    if (endTime) {
+      if (typeof endTime === 'string') {
+        // Remove extra spaces and normalize format
+        const cleanEndTime = endTime.replace(/\s+/g, ' ').trim();
+        // Extract hours, minutes, and period
+        const endMatch = cleanEndTime.match(/^(\d+)[\.:]?(\d*)\s*(AM|PM)$/i);
+        
+        if (endMatch) {
+          let [_, hours, minutes, period] = endMatch;
+          hours = parseInt(hours);
+          minutes = minutes ? parseInt(minutes) : 0;
+          
+          // Adjust hours for PM
+          if (period.toUpperCase() === 'PM' && hours < 12) {
+            hours += 12;
+          } else if (period.toUpperCase() === 'AM' && hours === 12) {
+            hours = 0;
+          }
+          
+          const parsedEndTime = new Date(scheduleDate);
+          parsedEndTime.setHours(hours, minutes, 0, 0);
+          scheduleFields.endTime = parsedEndTime;
+          scheduleFields.endTimeString = endTime;
+        } else {
+          return res.status(400).json({ msg: 'Invalid end time format. Please use format like "5:00 PM"' });
+        }
+      } else {
+        scheduleFields.endTime = new Date(endTime);
+        scheduleFields.endTimeString = endTime;
+      }
+    }
+    
     if (location) scheduleFields.location = location;
     if (assignedEmployees) scheduleFields.assignedEmployees = assignedEmployees;
     if (notificationOptions) scheduleFields.notificationOptions = notificationOptions;

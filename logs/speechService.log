@@ -49,3 +49,8 @@
 {"command":"ffmpeg -i C:\\Users\\munisekhar.sudhakar\\Desktop\\Sekhar\\Oscowl\\aiagentOscowl\\AIAgentServer\\utils\\temp\\input_1749196189559.ogg -y -acodec pcm_s16le -ar 16000 -ac 1 -f wav C:\\Users\\munisekhar.sudhakar\\Desktop\\Sekhar\\Oscowl\\aiagentOscowl\\AIAgentServer\\utils\\temp\\output_1749196189559.wav","level":"debug","message":"FFmpeg started","timestamp":"2025-06-06T07:50:03.416Z"}
 {"level":"debug","message":"FFmpeg progress","timestamp":"2025-06-06T07:50:04.602Z"}
 {"level":"debug","message":"FFmpeg conversion completed","timestamp":"2025-06-06T07:50:04.628Z"}
+{"level":"debug","message":"WAV conversion successful","timestamp":"2025-06-06T07:50:04.648Z","wavSize":152968}
+{"level":"debug","message":"Audio converted to WAV","timestamp":"2025-06-06T07:50:14.549Z","wavSize":152968}
+{"level":"debug","message":"Speech recognizer initialized for WAV","timestamp":"2025-06-06T07:50:39.232Z"}
+{"level":"info","message":"Speech recognized during processing","text":"Get all my schedules available.","timestamp":"2025-06-06T07:50:47.108Z"}
+{"confidence":"{\"Id\":\"848006e1b18a4df1b3b12a38cdf80d9c\",\"RecognitionStatus\":\"Success\",\"DisplayText\":\"Get all my schedules available.\",\"Offset\":16000000,\"Duration\":31600000,\"Channel\":0}","level":"info","message":"Speech recognized successfully","text":"Get all my schedules available.","timestamp":"2025-06-06T07:50:47.116Z"}

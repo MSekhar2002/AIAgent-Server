@@ -310,6 +310,24 @@ router.get('/', [auth, admin], async (req, res) => {
   }
 });
 
+// @route   GET api/absences/pending
+// @desc    Get all pending absences (admin only)
+// @access  Private/Admin
+router.get('/pending', [auth, admin], async (req, res) => {
+  try {
+    const pendingAbsences = await Absence.find({ status: 'pending' })
+      .populate('user', 'name email department position')
+      .populate('schedule', 'title date startTime endTime')
+      .populate('replacementUser', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json(pendingAbsences);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
 // @route   GET api/absences/:id
 // @desc    Get absence by ID
 // @access  Private
