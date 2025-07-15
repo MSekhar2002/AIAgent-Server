@@ -12,6 +12,11 @@ const AbsenceSchema = new Schema({
     ref: 'schedule',
     required: true
   },
+  team: {
+    type: Schema.Types.ObjectId,
+    ref: 'team',
+    required: false
+  },
   startDate: {
     type: Date,
     required: true

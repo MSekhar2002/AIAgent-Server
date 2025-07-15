@@ -7,7 +7,7 @@ const User = require('../../models/User');
 const Location = require('../../models/Location');
 const Notification = require('../../models/Notification');
 const { sendScheduleNotification } = require('../../utils/emailService');
-const { sendScheduleWhatsApp } = require('../../utils/whatsappService');
+const { sendScheduleWhatsApp, sendScheduleChangeWhatsApp } = require('../../utils/twilioService');
 
 // @route   POST api/schedules
 // @desc    Create a schedule
@@ -21,10 +21,12 @@ router.post('/', [auth, admin], async (req, res) => {
     endTime,
     location,
     assignedEmployees,
-    notificationOptions
+    notificationOptions,
   } = req.body;
 
   try {
+    // Check if user has a team
+    const user = await User.findById(req.user.id);
     // Check if location exists
     const locationDoc = await Location.findById(location);
     if (!locationDoc) {
@@ -108,6 +110,7 @@ router.post('/', [auth, admin], async (req, res) => {
       startTimeString: startTime,
       endTimeString: endTime,
       location,
+      team: user.team,
       assignedEmployees: assignedEmployees || [],
       notificationOptions: notificationOptions || {
         sendEmail: true,
@@ -151,9 +154,19 @@ router.post('/', [auth, admin], async (req, res) => {
             await notification.save();
           }
 
+          // In POST route (create schedule) - around line 180:
           // Send WhatsApp notification
           if (employee.notificationPreferences.whatsapp && employee.phone) {
-            await sendScheduleWhatsApp(employee, schedule, locationDoc);
+            await sendScheduleWhatsApp(employee, schedule, locationDoc, true); // Set isOutsideSession to true
+            notification.status = 'sent';
+            notification.sentAt = Date.now();
+            await notification.save();
+          }
+
+          // In PUT route (update schedule) - around line 470:
+          // Send WhatsApp notification
+          if (employee.notificationPreferences.whatsapp && employee.phone) {
+            await sendScheduleChangeWhatsApp(employee, schedule, locationDoc, true); // Set isOutsideSession to true
             notification.status = 'sent';
             notification.sentAt = Date.now();
             await notification.save();
@@ -187,21 +200,37 @@ router.get('/', auth, async (req, res) => {
   try {
     let schedules;
     
-    // If admin, get all schedules
-    // If employee, get only schedules assigned to them
+    // Get user with team info
     const user = await User.findById(req.user.id);
     
     if (user.role === 'admin') {
-      schedules = await Schedule.find()
-        .populate('location', 'name address city state')
-        .populate('assignedEmployees', 'name email')
-        .populate('createdBy', 'name')
-        .sort({ date: 1 });
+      // If admin, get all schedules for their team
+      if (user.team) {
+        schedules = await Schedule.find({ team: user.team })
+          .populate('location', 'name address city state')
+          .populate('assignedEmployees', 'name email')
+          .populate('createdBy', 'name')
+          .populate('team', 'name')
+          .sort({ date: 1 });
+      } else {
+        // If admin has no team, get all schedules
+        schedules = await Schedule.find()
+          .populate('location', 'name address city state')
+          .populate('assignedEmployees', 'name email')
+          .populate('createdBy', 'name')
+          .populate('team', 'name')
+          .sort({ date: 1 });
+      }
     } else {
-      schedules = await Schedule.find({ assignedEmployees: req.user.id })
+      // If employee, get only schedules assigned to them and in their team
+      schedules = await Schedule.find({ 
+        assignedEmployees: req.user.id,
+        team: user.team
+      })
         .populate('location', 'name address city state')
         .populate('assignedEmployees', 'name email')
         .populate('createdBy', 'name')
+        .populate('team', 'name')
         .sort({ date: 1 });
     }
     

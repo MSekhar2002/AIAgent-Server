@@ -19,10 +19,12 @@ router.get('/', auth, async (req, res) => {
     // If user doesn't have language settings yet, create default settings
     if (!user.languageSettings) {
       const newLanguageSettings = new LanguageSettings({
+        user: req.user.id, // Add this required field
         preferredLanguage: 'en-US',
         interfaceLanguage: 'en-US',
         voiceRecognitionLanguage: 'en-US',
-        autoTranslateEnabled: false
+        autoTranslateEnabled: false,
+        team : user.team
       });
       
       const languageSettings = await newLanguageSettings.save();

@@ -4,6 +4,7 @@ const Ajv = require('ajv');
 const ajv = new Ajv();
 const User = require('../models/User');
 const Location = require('../models/Location');
+const Team = require('../models/Team');
 const mongoose = require('mongoose'); 
 // Logger setup
 const logger = winston.createLogger({
@@ -82,9 +83,31 @@ exports.processWithAzureOpenAI = async (message, conversationHistory, user) => {
     const deploymentId = process.env.AZURE_OPENAI_DEPLOYMENT_ID || 'gpt-4o';
     logger.debug('Processing with Azure OpenAI', { message, userId: user._id });
 
+    // Populate user's team information if it exists
+    let teamInfo = '';
+    if (user.team) {
+      try {
+        const team = await Team.findById(user.team).exec();
+        if (team) {
+          teamInfo = ` They belong to the team "${team.name}".`;
+        }
+      } catch (err) {
+        logger.error('Error fetching team info', { error: err.message });
+      }
+    }
+
     const systemMessage = {
       role: 'system',
-      content: `You are a friendly assistant for the Employee Scheduling System, helping employees and admins with schedules, locations, absences, and more. The user is ${user.name}, a ${user.position || 'staff member'} in ${user.department || 'company'}. Respond naturally, as a human would, using the user's name and including follow-up suggestions. Avoid technical jargon or raw data dumps. If unsure, ask for clarification or suggest contacting the admin.`
+      content: `You are a friendly assistant for the Employee Scheduling System, helping employees and admins with schedules, locations, absences, and more. The user is ${user.name}, a ${user.position || 'staff member'} in ${user.department || 'company'}.${teamInfo} 
+      
+      IMPORTANT LANGUAGE INSTRUCTIONS:
+      1. Detect the language of the user's message (English or French)
+      2. Always respond in the SAME language as the user's input
+      3. If the user writes in French, respond entirely in French
+      4. If the user writes in English, respond entirely in English
+      5. For mixed language inputs, use the dominant language
+      
+      Respond naturally, as a human would, using the user's name and including follow-up suggestions. Avoid technical jargon or raw data dumps. If unsure, ask for clarification or suggest contacting the admin.`
     };
 
     // Map conversation history to ensure proper role field
@@ -120,6 +143,12 @@ exports.generateMongoDBQuery = async (message, user, modelSchemas, conversationH
     const simplifiedSchemas = simplifySchemas(modelSchemas);
     const currentDate = new Date().toISOString().split('T')[0];
 
+    // Get user's team ID if available
+    let teamId = null;
+    if (user.team) {
+      teamId = user.team;
+    }
+
     const systemMessage = {
       role: 'system',
       content: `You are a MongoDB query generator for an Employee Scheduling System.
@@ -137,7 +166,10 @@ Based on the user's query, generate a MongoDB query or aggregation pipeline. Rul
    - Absence: user = ${user._id}
    - HourTracking: user = ${user._id}
    - Conversation: user = ${user._id}
-3. Admins can access all data without restrictions.
+3. Admins can access all data within their team scope:
+   - If user has a team (${teamId ? 'yes' : 'no'}), filter by team: ${teamId || 'N/A'}
+   - For Schedule, Location, User, WhatsAppSettings: team = ${teamId || 'user.team'}
+   - For Absence: join with User to filter by user's team
 4. Handle synonyms (e.g., 'shifts' = 'schedules', 'today' = current date).
 5. For date queries (e.g., 'today'), use $gte and $lt for ranges.
 6. Determine operation: read, write, update, or delete.
@@ -151,7 +183,7 @@ Based on the user's query, generate a MongoDB query or aggregation pipeline. Rul
 14. Include all fields for 'all details' queries and populate references.
 15. Ensure pipeline is non-empty if aggregation is used; otherwise, use filter with find.
 16. For schedule creation queries (e.g., "Create a schedule for <employee names> at <location> on <date> from <start time> to <end time>"), resolve employee names to User _ids and location name to Location _id by querying the respective models case-insensitively. Include any notes in the description field.
-17. For schedule creation, set createdBy to the current user's _id, status to 'scheduled', and include default values for optional fields like notificationOptions.
+17. For schedule creation, set createdBy to the current user's _id, status to 'scheduled', team to the user's team ID (${teamId || 'user.team'}), and include default values for optional fields like notificationOptions.
 18. For reference fields like location and assignedEmployees in the Schedule model, provide ObjectIds as strings (e.g., "67efab9372692e5936f97788"), not $lookup operations. Do NOT include $lookup in the data object for write operations; $lookup is only for aggregation pipelines.
 - intent: send_announcement
   Description: Admin wants to send a general announcement to a specific user or all users.
@@ -308,9 +340,16 @@ For absence approve/reject, set status to 'approved' or 'rejected', approvedBy t
 
             if (employeeNames && locationName) {
               // Resolve employee IDs
-              const employees = await User.find({
+              const employeeQuery = {
                 name: { $in: employeeNames.map(name => new RegExp(`^${name}$`, 'i')) }
-              });
+              };
+              
+              // Add team filter for admins if they have a team
+              if (user.role === 'admin' && user.team) {
+                employeeQuery.team = user.team;
+              }
+              
+              const employees = await User.find(employeeQuery);
               if (employees.length !== employeeNames.length) {
                 const foundNames = employees.map(emp => emp.name);
                 const missing = employeeNames.filter(name => !foundNames.includes(name));
@@ -319,10 +358,17 @@ For absence approve/reject, set status to 'approved' or 'rejected', approvedBy t
               }
               const employeeIds = employees.map(emp => emp._id);
 
-              // Resolve location ID
-              const location = await Location.findOne({
+              // Resolve location ID with team filter
+              const locationQuery = {
                 name: new RegExp(`^${locationName}$`, 'i')
-              });
+              };
+              
+              // Add team filter for admins if they have a team
+              if (user.role === 'admin' && user.team) {
+                locationQuery.team = user.team;
+              }
+              
+              const location = await Location.findOne(locationQuery);
               if (!location) {
                 logger.warn('Location not found', { locationName });
                 return { error: true, message: `Location "${locationName}" not found` };
@@ -333,7 +379,7 @@ For absence approve/reject, set status to 'approved' or 'rejected', approvedBy t
               const date = dateMatch ? new Date(dateMatch[0]) : new Date();
               const startTime = new Date(`${dateMatch[0]}T09:00:00Z`);
               const endTime = new Date(`${dateMatch[0]}T17:00:00Z`);
-              const note = message.match(/note:\s*['"]([^'"]+)['"]/i)?.[1] || '';
+              const note = message.match(/note:\s*['"]([\^'"]+)['"]/)?.[1] || '';
 
               // Build the schedule data
               parsed.query.data = {
@@ -347,6 +393,7 @@ For absence approve/reject, set status to 'approved' or 'rejected', approvedBy t
                 location: location._id,
                 assignedEmployees: employeeIds,
                 createdBy: user._id,
+                team: user.team, // Add team reference
                 notificationSent: false,
                 notificationOptions: {
                   sendEmail: true,
@@ -368,7 +415,16 @@ For absence approve/reject, set status to 'approved' or 'rejected', approvedBy t
             const status = isReject ? 'rejected' : 'approved';
             let targetUserId = user._id;
             if (parsed.query?.employeeName) {
-              const targetUser = await User.findOne({ name: new RegExp(`^${parsed.query.employeeName}$`, 'i') });
+              const targetUserQuery = { 
+                name: new RegExp(`^${parsed.query.employeeName}$`, 'i') 
+              };
+              
+              // Add team filter for admins if they have a team
+              if (user.role === 'admin' && user.team) {
+                targetUserQuery.team = user.team;
+              }
+              
+              const targetUser = await User.findOne(targetUserQuery);
               if (!targetUser) {
                 logger.warn('Employee not found by name', { employeeName: parsed.query.employeeName });
                 return { error: true, message: `Employee "${parsed.query.employeeName}" not found.` };

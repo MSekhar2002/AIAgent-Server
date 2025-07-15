@@ -31,6 +31,11 @@ const ScheduleSchema = new Schema({
     type: String,
     required: false
   },
+  team: {
+    type: Schema.Types.ObjectId,
+    ref: 'team',
+    required: false
+  },
   location: {
     type: Schema.Types.ObjectId,
     ref: 'location',

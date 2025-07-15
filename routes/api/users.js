@@ -21,7 +21,7 @@ router.post('/', [auth, admin], async (req, res) => {
     department, 
     position, 
     notificationPreferences,
-    defaultLocation 
+    defaultLocation
   } = req.body;
 
   try {
@@ -29,7 +29,7 @@ router.post('/', [auth, admin], async (req, res) => {
     let user = await User.findOne({ email });
 
     if (user) {
-      return res.status(400).json({ msg: 'User already exists' });
+      return res.status(400).json({ msg: 'User already exists, Invite them to team' });
     }
 
     // Create new user
@@ -42,6 +42,7 @@ router.post('/', [auth, admin], async (req, res) => {
       department,
       position,
       defaultLocation,
+      team: user.team,
       notificationPreferences: notificationPreferences || {
         email: true,
         whatsapp: phone ? true : false
@@ -62,9 +63,9 @@ router.post('/', [auth, admin], async (req, res) => {
         await sendWelcomeEmail(user);
       }
 
-      // Send WhatsApp welcome message
+      // Send welcome WhatsApp message if enabled
       if (user.notificationPreferences.whatsapp && user.phone) {
-        await sendWelcomeWhatsApp(user, 'Employee Scheduling System');
+        await sendWelcomeWhatsApp(user, "Employee Scheduling System", true); // Set isOutsideSession to true
       }
     } catch (notificationErr) {
       console.error('Notification error:', notificationErr.message);
@@ -173,7 +174,10 @@ router.post('/register', async (req, res) => {
 // @access  Private/Admin
 router.get('/', [auth, admin], async (req, res) => {
   try {
-    const users = await User.find().select('-password').sort({ createdAt: -1 });
+    const users = await User.find()
+      .select('-password')
+      .populate('team', 'name')
+      .sort({ createdAt: -1 });
     res.json(users);
   } catch (err) {
     console.error(err.message);

@@ -51,6 +51,11 @@ const NotificationSchema = new Schema({
     ref: 'user',
     required: true
   },
+  team: {
+    type: Schema.Types.ObjectId,
+    ref: 'team',
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

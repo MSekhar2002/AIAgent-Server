@@ -24,6 +24,15 @@ const UserSchema = new Schema({
     enum: ['admin', 'employee'],
     default: 'employee'
   },
+  team: {
+    type: Schema.Types.ObjectId,
+    ref: 'team',
+    required: false
+  },
+  isTeamAdmin: {
+    type: Boolean,
+    default: false
+  },
   department: {
     type: String,
     required: false

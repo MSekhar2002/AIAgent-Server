@@ -1,0 +1,149 @@
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMd054349abbd7e6fa56c30ddd000404e3","timestamp":"2025-07-02T04:09:51.511Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM7ae69af19b420a40f55c9e2e39a09328","timestamp":"2025-07-02T04:15:54.227Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMaba71ff319aef5f1dbe4022061e06d26","timestamp":"2025-07-02T04:20:18.619Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM5629847130c99f3f2ab084daa6edc87f","timestamp":"2025-07-02T04:21:01.566Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMc855f6952eaba074d3cad78280865398","timestamp":"2025-07-02T04:22:03.036Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMc08089bdada0082db656c775b3d58963","timestamp":"2025-07-02T04:22:28.678Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMa34a557d9ca4c6f6964e48505da5eb94","timestamp":"2025-07-02T04:39:58.889Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMedbe66cade07ba7fdade8a8f4a8d1a6c","timestamp":"2025-07-02T04:40:11.883Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM1f76c6a991590ff4886e48e96a4a64bf","timestamp":"2025-07-02T04:41:01.380Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM2d06414d4207d12566b4ba2f04167f11","timestamp":"2025-07-02T04:44:08.942Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMae789d550cd68146a2b5ba66fd65bb74","timestamp":"2025-07-02T04:47:16.342Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM7860610d99b4a9a2f77d040b89b1c371","timestamp":"2025-07-02T04:47:22.726Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMde281cacc85f5dfb0158adfb76382b78","timestamp":"2025-07-02T04:47:41.120Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM978dc5fdca21194402b17b1d5f8e5898","timestamp":"2025-07-02T04:47:48.165Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMb9457a9f9ff07703cc904b849c80011c","timestamp":"2025-07-02T04:49:04.457Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM42d45f246477a3fb6512e55f31849cf8","timestamp":"2025-07-02T04:49:13.206Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM6c8d3805a69f604d2535652a7b1c167e","timestamp":"2025-07-02T04:49:26.953Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMb87b18b28bd364cfdf20828071601f86","timestamp":"2025-07-02T04:49:33.365Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM132b123ce64bb07c05b67162e65a5c20","timestamp":"2025-07-02T10:46:56.273Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-02T10:48:50.848Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMb2b66a66b61eaea30a80bcefcf3002e3","timestamp":"2025-07-02T10:48:53.290Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-02T10:54:13.340Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMc272ecb3743bf290f24a53898f69b89f","timestamp":"2025-07-02T10:54:16.132Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-02T11:02:59.730Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM284b1ae1bfce87738307586b9868fcbf","timestamp":"2025-07-02T11:03:02.767Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-02T11:04:52.281Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM9cbe707a5c9612e9ad2947d3083a4d44","timestamp":"2025-07-02T11:04:54.992Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-02T11:06:30.559Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM52fd97a924eee98b85c7e1f8e637f31d","timestamp":"2025-07-02T11:06:33.348Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-02T11:07:13.026Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-02T11:08:24.296Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM3e6801762d7dd2ca8e236ae1e5263db6","timestamp":"2025-07-02T11:08:27.133Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMe6f8746e9dbabb3fb2c8780d1835e3d0","timestamp":"2025-07-02T11:15:14.274Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMc37a0d5b6f1a703c5cd5c9959595c320","timestamp":"2025-07-02T11:15:50.187Z"}
+{"level":"error","message":"WhatsApp outside session template error:","timestamp":"2025-07-04T13:53:29.416Z"}
+{"code":20422,"level":"error","message":"Error sending announcement WhatsApp message: Invalid Parameter","moreInfo":"https://www.twilio.com/docs/errors/20422","stack":"Error: Invalid Parameter\n    at success (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\node_modules\\twilio\\lib\\base\\Version.js:79:23)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async sendWhatsAppOutsideSessionTemplate (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:110:22)\n    at async sendAnnouncementWhatsApp (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:203:5)\n    at async C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\routes\\api\\notifications.js:206:13","status":400,"timestamp":"2025-07-04T13:53:29.421Z"}
+{"level":"error","message":"WhatsApp outside session template error:","timestamp":"2025-07-04T13:56:14.161Z"}
+{"code":20422,"level":"error","message":"Error sending announcement WhatsApp message: Invalid Parameter","moreInfo":"https://www.twilio.com/docs/errors/20422","stack":"Error: Invalid Parameter\n    at success (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\node_modules\\twilio\\lib\\base\\Version.js:79:23)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async sendWhatsAppOutsideSessionTemplate (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:110:22)\n    at async sendAnnouncementWhatsApp (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:203:5)\n    at async C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\routes\\api\\notifications.js:206:13","status":400,"timestamp":"2025-07-04T13:56:14.164Z"}
+{"level":"error","message":"WhatsApp outside session template error:","timestamp":"2025-07-04T13:57:16.508Z"}
+{"code":20422,"level":"error","message":"Error sending announcement WhatsApp message: Invalid Parameter","moreInfo":"https://www.twilio.com/docs/errors/20422","stack":"Error: Invalid Parameter\n    at success (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\node_modules\\twilio\\lib\\base\\Version.js:79:23)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async sendWhatsAppOutsideSessionTemplate (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:110:22)\n    at async sendAnnouncementWhatsApp (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:203:5)\n    at async C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\routes\\api\\notifications.js:206:13","status":400,"timestamp":"2025-07-04T13:57:16.513Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM211a7b566ee952b1dbce5bed9c55b8a5","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-05T12:59:57.038Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-05T12:59:57.062Z","userId":"68640712694e4ac5957ce730"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM0c7ee2eeed9213347b7148e3778bb036","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-05T13:05:24.853Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-05T13:05:24.856Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM275e28bcfc106d37cba7f6aead293629","timestamp":"2025-07-05T13:06:58.890Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM5fb3fc4f739682f01e7f92e15827f943","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-05T13:07:24.710Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-05T13:07:24.712Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM915d58f3f2eabb3a0a6a9dd20e1ddca4","timestamp":"2025-07-05T13:08:04.958Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM49499dc1eea3ea01bb1b6426de97c799","timestamp":"2025-07-05T13:09:09.074Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-05T13:26:50.425Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM0b8d190b120d7d1329dccf7ebe252091","timestamp":"2025-07-05T13:26:52.433Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMb7f55f908fa6cb36e48759b7f61c3bb6","timestamp":"2025-07-06T05:07:15.272Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-06T05:09:38.612Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMc04182a30efa076d830385ae4270ccbe","timestamp":"2025-07-06T05:10:20.973Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-06T05:10:53.045Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMf301049dffdc71fa9d406dd18f734356","timestamp":"2025-07-06T05:10:55.184Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-06T05:11:12.822Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM17ac5f339dd87f629e447ec7e626dfc9","timestamp":"2025-07-06T05:11:14.798Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-06T05:12:53.942Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM5aef359668679aa3f40cf892ac768557","timestamp":"2025-07-06T05:12:56.888Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-06T05:20:34.107Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMf34bf66c6ac5d3355914cc74d768af5d","timestamp":"2025-07-06T05:21:05.983Z"}
+{"level":"error","message":"WhatsApp template sending error:","timestamp":"2025-07-06T05:24:40.170Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMb9a2847ddb3646807ff078bb643d9aec","timestamp":"2025-07-06T05:24:42.740Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMbbef7a64ffcda6e8dc84e5d01a88229b","timestamp":"2025-07-06T05:29:23.266Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM95dbaa83ccf7e9aa1a037993ea52c531","timestamp":"2025-07-06T05:29:36.227Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM9046bc98033ce4a38713cc1ffa2f0db2","timestamp":"2025-07-06T05:29:51.643Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM5ded7279327feee60da1e3869d79f14a","timestamp":"2025-07-06T05:30:59.948Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM13ec596c267ed022dba8a5d6c0d148c9","timestamp":"2025-07-06T05:31:29.495Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM7535f9561700e70279c28842d133ab15","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-07T05:30:57.674Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-07T05:31:00.563Z","userId":"68640712694e4ac5957ce730"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM632ab4ae92e29298f35b0c90b0ab0a0a","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-07T05:34:12.771Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-07T05:36:09.756Z","userId":"68640712694e4ac5957ce730"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM6793671d0e39ab71753de38e310cf94f","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-07T05:45:19.357Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-07T05:45:19.384Z","userId":"68640712694e4ac5957ce730"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM85d9b7996f634c0161375732b28392a5","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-07T05:52:55.928Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-07T05:52:55.930Z","userId":"68640712694e4ac5957ce730"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM7cda4cd266e3586b59ed087e552a4eec","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-07T06:02:49.150Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-07T06:03:06.454Z","userId":"68640712694e4ac5957ce730"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MMa401d711fc401f164543f7b04acc2475","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-07T06:09:34.053Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-07T06:09:34.066Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp template message sent:","messageId":"SM47ac1e39a6d25813cc7748e19081d6b5","template":"general_announcement_update","timestamp":"2025-07-07T06:12:42.362Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM749212ca425a643c671a76233617b9a7","timestamp":"2025-07-07T06:13:19.859Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM07b86c795f96781d3e4ed40f02ede44f","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-07T13:35:50.831Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-07T13:35:50.834Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMf5b874c3f4fdab378649561bcd25d41b","timestamp":"2025-07-07T13:35:51.430Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM5c5ae8819a12ce4290d6563f347ebced","template":"general_announcement_update","templateSid":"HX54b05ae203f5a608345586fee1d22bb4","timestamp":"2025-07-07T13:54:56.965Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-07T13:54:59.164Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMc42ad0fc723b1b7aac814eca01d71648","timestamp":"2025-07-07T13:54:59.692Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MMdb770457ec4c284c0493875e37e8f935","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-07T16:40:05.522Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-07T16:40:05.525Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMf2bf6c141b036ec524c3866d0782dceb","timestamp":"2025-07-07T16:40:06.087Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM96d8123b00f6a9d29107d187e7c4d07b","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-08T04:16:02.261Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T04:16:02.264Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM3bccb0f9ce7e5e7a326fb421e4bc0475","timestamp":"2025-07-08T04:16:02.911Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MM29ef3d0da0b7327fccf2f2dd6879b84e","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-08T04:19:47.838Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T04:19:47.839Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM6311ca4cabfe94592f9834404253511b","timestamp":"2025-07-08T04:19:48.433Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MMa287d4bc7c257cc4daed38d0662e5e14","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-08T04:22:43.408Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T04:22:43.478Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM5b9998628dac56f551153a89bdfdb93e","timestamp":"2025-07-08T04:22:44.053Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMb6d9ebffc7b32b04545b259b397d8196","timestamp":"2025-07-08T04:26:36.118Z"}
+{"language":"English","level":"info","message":"WhatsApp outside session template sent:","messageId":"MM6d85ae867e1f9d7351761a30fd80b38b","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-08T04:29:13.419Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T04:29:13.424Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMc47115c2f8358e4655f15ebe07e34786","timestamp":"2025-07-08T04:29:14.080Z"}
+{"language":"English","level":"info","message":"WhatsApp outside session template sent:","messageId":"MM1b9602c9ba982e1fd5769c6642060246","template":"general_announcement_update","templateSid":"HX77cbfff65c92c03bccdeb5c8bc1f180c","timestamp":"2025-07-08T05:04:58.313Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T05:04:58.322Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMa221f430e3390bdd24863ec973a9f521","timestamp":"2025-07-08T05:04:58.879Z"}
+{"language":"English","level":"info","message":"WhatsApp outside session template sent:","messageId":"MM1eb74d7d330753aa1c7371a0b6d4220c","template":"general_announcement_update","templateSid":"HX77cbfff65c92c03bccdeb5c8bc1f180c","timestamp":"2025-07-08T05:37:22.623Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T05:37:22.627Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMed907ac804035ad4dce1d211be1d597c","timestamp":"2025-07-08T05:37:23.335Z"}
+{"level":"error","message":"WhatsApp outside session template error:","timestamp":"2025-07-08T05:46:53.335Z"}
+{"level":"error","message":"Error sending announcement WhatsApp message: template is not defined","stack":"ReferenceError: template is not defined\n    at getTemplateSid (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:260:33)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async sendWhatsAppOutsideSessionTemplate (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:105:25)\n    at async sendAnnouncementWhatsApp (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:212:5)\n    at async C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\routes\\api\\whatsapp.js:251:17","timestamp":"2025-07-08T05:46:53.338Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMc13b189798fb0d20bcc1dd5875385ee4","timestamp":"2025-07-08T05:46:54.268Z"}
+{"level":"error","message":"WhatsApp outside session template error:","timestamp":"2025-07-08T05:48:10.781Z"}
+{"level":"error","message":"Error sending announcement WhatsApp message: client.content.v1.contents(...).approvalRequests is not a function","stack":"TypeError: client.content.v1.contents(...).approvalRequests is not a function\n    at getTemplateSid (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:264:4)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async sendWhatsAppOutsideSessionTemplate (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:105:25)\n    at async sendAnnouncementWhatsApp (C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\twilioService.js:212:5)\n    at async C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\routes\\api\\whatsapp.js:251:17","timestamp":"2025-07-08T05:48:10.782Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM2ca5bbb84d9fc0c4294fcb6226d5fe4f","timestamp":"2025-07-08T05:48:11.660Z"}
+{"language":"English","level":"info","message":"WhatsApp outside session template sent:","messageId":"MM49f8f412e58b4ccf91919e3cde228c6d","template":"general_announcement_update","templateSid":"HX77cbfff65c92c03bccdeb5c8bc1f180c","timestamp":"2025-07-08T05:53:02.788Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T05:53:02.790Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM2e4847006da30b4f8b72b87e5bc2cefa","timestamp":"2025-07-08T05:53:03.348Z"}
+{"language":"English","level":"info","message":"WhatsApp outside session template sent:","messageId":"MM6cbf2bb4f0f2191f501190b41bf501fa","template":"general_announcement_update","templateSid":"HX77cbfff65c92c03bccdeb5c8bc1f180c","timestamp":"2025-07-08T05:57:03.153Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T05:57:03.155Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM42d8b3b5295321f85870a7d1ce6667c9","timestamp":"2025-07-08T05:57:03.710Z"}
+{"language":"English","level":"info","message":"WhatsApp outside session template sent:","messageId":"MM1926a9083be33f494b3ba27dbfe214df","template":"general_announcement_update","templateSid":"HX77cbfff65c92c03bccdeb5c8bc1f180c","timestamp":"2025-07-08T06:07:32.466Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T06:07:32.467Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM13a5e2b7c4c7748b04100cf2bce907b0","timestamp":"2025-07-08T06:07:33.015Z"}
+{"language":null,"level":"info","message":"WhatsApp outside session template sent:","messageId":"MMd737a713a2e8dc1800e8d29d55fca83d","template":"general_announcement_update","templateSid":"HX77cbfff65c92c03bccdeb5c8bc1f180c","timestamp":"2025-07-08T06:37:20.577Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T06:37:20.581Z","userId":"68640712694e4ac5957ce730"}
+{"language":"English","level":"info","message":"WhatsApp outside session template sent:","messageId":"MMb91a40ff29c5335359676e35274f2d3b","template":"general_announcement_update","templateSid":"HX77cbfff65c92c03bccdeb5c8bc1f180c","timestamp":"2025-07-08T06:39:40.579Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T06:39:40.583Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM7d9afceb2ba3bea7cdda66435fafb54a","timestamp":"2025-07-08T06:39:41.242Z"}
+{"language":"French","level":"info","message":"WhatsApp outside session template sent:","messageId":"MM21628185316a2b4c65762f308f2386f1","template":"general_announcement_update","templateSid":"HX54b05ae203f5a608345586fee1d22bb4","timestamp":"2025-07-08T06:45:42.217Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T06:45:42.219Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM6bac10c3d13c67ef72feca9ae05d2260","timestamp":"2025-07-08T06:45:42.770Z"}
+{"language":"French","level":"info","message":"WhatsApp outside session template sent:","messageId":"MMfa27976f9cf3973cafa8cd5d26ea33dc","template":"general_announcement_update","templateSid":"HX54b05ae203f5a608345586fee1d22bb4","timestamp":"2025-07-08T07:00:45.809Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T07:00:45.811Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM46d03b36a51aa5a6bbd5fb8584dd6d37","timestamp":"2025-07-08T07:00:47.839Z"}
+{"language":"French","level":"info","message":"WhatsApp outside session template sent:","messageId":"MMf9e8e4b81d91490bc30846226cfae258","template":"general_announcement_update","templateSid":"HX54b05ae203f5a608345586fee1d22bb4","timestamp":"2025-07-08T07:02:16.188Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T07:02:16.189Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM7dba9c39d2bc28f01c9c6e8892275eab","timestamp":"2025-07-08T07:02:27.460Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM1071bdf695d7cafde4dd7856c0dfd4b0","timestamp":"2025-07-08T07:08:39.071Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMb07c778c2b05d1a59d7ed74db55f1a9e","timestamp":"2025-07-08T07:09:07.942Z"}
+{"language":"English","level":"info","message":"WhatsApp outside session template sent:","messageId":"MM275bbd62567fcc0d5c1da9d8dcb0d50b","template":"general_announcement_update","templateSid":"HX25b0a8e7b49576bd4410e3545454cae1","timestamp":"2025-07-08T07:19:02.286Z"}
+{"level":"info","message":"Announcement WhatsApp message sent","phone":"916304022592","timestamp":"2025-07-08T07:19:02.291Z","userId":"68640712694e4ac5957ce730"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMa4b66db9ec8265c3ae61562941a63418","timestamp":"2025-07-08T07:19:23.610Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMda0b106f3ac8e534dfb7a6fa7c08a0dd","timestamp":"2025-07-08T07:49:53.772Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMe6063547d100d9fe3860a9dc734e9084","timestamp":"2025-07-08T07:50:44.738Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SM1e74b863191699b72efa7b6318d0835f","timestamp":"2025-07-08T07:51:25.060Z"}
+{"level":"info","message":"WhatsApp message sent:","messageId":"SMc65c876f2a469f383a166467f904ffcc","timestamp":"2025-07-09T06:27:39.713Z"}

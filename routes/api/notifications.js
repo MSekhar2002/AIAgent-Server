@@ -9,6 +9,7 @@ const Location = require('../../models/Location');
 const { sendEmail } = require('../../utils/emailService');
 const { sendWhatsAppMessage } = require('../../utils/whatsappService');
 const { getTrafficData, getRouteInfo } = require('../../utils/mapsService');
+const { sendAnnouncementWhatsApp } = require('../../utils/twilioService');
 const mongoose = require('mongoose');
 // @route   POST api/notifications
 // @desc    Create and send a notification
@@ -92,6 +93,175 @@ router.post('/', [auth, admin], async (req, res) => {
     res.json(validNotifications);
   } catch (err) {
     console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+router.post('/announcement', [auth, admin], async (req, res) => {
+  const {
+    type, // 'email', 'whatsapp', or 'both'
+    recipients, // array of user IDs or "all"
+    message,
+    subject
+  } = req.body;
+
+  try {
+    // Validate message
+    if (!message || message.trim() === '') {
+      return res.status(400).json({ msg: 'Message content is required' });
+    }
+
+    // Set default type if not provided
+    const notificationType = type || 'whatsapp';
+
+    let users;
+    
+    // Handle "all" recipients or specific user IDs
+    if (recipients === 'all' || (Array.isArray(recipients) && recipients.includes('all'))) {
+      // Build query based on notification type
+      let query = {};
+      
+      if (notificationType === 'email') {
+        query = { 
+          email: { $ne: null }, 
+          'notificationPreferences.email': true 
+        };
+      } else if (notificationType === 'whatsapp') {
+        query = { 
+          phone: { $ne: null }, 
+          'notificationPreferences.whatsapp': true 
+        };
+      } else if (notificationType === 'both') {
+        query = { 
+          $or: [
+            { email: { $ne: null }, 'notificationPreferences.email': true },
+            { phone: { $ne: null }, 'notificationPreferences.whatsapp': true }
+          ]
+        };
+      }
+      
+      users = await User.find(query);
+    } else if (Array.isArray(recipients) && recipients.length > 0) {
+      // Build query based on notification type
+      let query = { _id: { $in: recipients } };
+      
+      if (notificationType === 'email') {
+        query.email = { $ne: null };
+        query['notificationPreferences.email'] = true;
+      } else if (notificationType === 'whatsapp') {
+        query.phone = { $ne: null };
+        query['notificationPreferences.whatsapp'] = true;
+      } else if (notificationType === 'both') {
+        query.$or = [
+          { email: { $ne: null }, 'notificationPreferences.email': true },
+          { phone: { $ne: null }, 'notificationPreferences.whatsapp': true }
+        ];
+      }
+      
+      users = await User.find(query);
+    } else {
+      return res.status(400).json({ msg: 'Recipients are required' });
+    }
+
+    if (users.length === 0) {
+      return res.status(404).json({ msg: 'No valid recipients found for the selected notification type' });
+    }
+
+    // Send announcements to all recipients
+    const results = [];
+    
+    for (const user of users) {
+      try {
+        // Create notification record
+        const notification = new Notification({
+          type: notificationType,
+          recipient: user._id,
+          subject: subject || 'General Announcement',
+          content: message,
+          relatedTo: 'announcement',
+          createdBy: req.user.id,
+          status: 'pending'
+        });
+
+        await notification.save();
+
+        let emailSent = false;
+        let whatsappSent = false;
+        let errorMessage = '';
+
+        // Send email notification
+        if ((notificationType === 'email' || notificationType === 'both') && user.notificationPreferences.email && user.email) {
+          try {
+            await sendEmail(user.email, subject || 'General Announcement', message);
+            emailSent = true;
+          } catch (emailErr) {
+            console.error(`Email error for user ${user._id}:`, emailErr.message);
+            errorMessage += `Email failed: ${emailErr.message}. `;
+          }
+        }
+
+        // Send WhatsApp notification
+        if ((notificationType === 'whatsapp' || notificationType === 'both') && user.notificationPreferences.whatsapp && user.phone) {
+          try {
+            const aiResponse = await processWithAzureOpenAI(
+              `Detect the language of this message and respond with just "English" or "French": "${message}"`,
+              [],
+              user
+            );
+            await sendAnnouncementWhatsApp(user, message, true, aiResponse); // Always outside session
+            whatsappSent = true;
+          } catch (whatsappErr) {
+            console.error(`WhatsApp error for user ${user._id}:`, whatsappErr.message);
+            errorMessage += `WhatsApp failed: ${whatsappErr.message}. `;
+          }
+        }
+
+        // Update notification status
+        if (emailSent || whatsappSent) {
+          notification.status = 'sent';
+          notification.sentAt = Date.now();
+          await notification.save();
+        } else {
+          notification.status = 'failed';
+          await notification.save();
+        }
+
+        results.push({
+          userId: user._id,
+          userName: user.name,
+          email: user.email,
+          phone: user.phone,
+          status: (emailSent || whatsappSent) ? 'sent' : 'failed',
+          emailSent,
+          whatsappSent,
+          error: errorMessage.trim() || undefined,
+          notificationId: notification._id
+        });
+      } catch (error) {
+        console.error(`Failed to send announcement to user ${user._id}:`, error);
+        results.push({
+          userId: user._id,
+          userName: user.name,
+          email: user.email,
+          phone: user.phone,
+          status: 'failed',
+          emailSent: false,
+          whatsappSent: false,
+          error: error.message
+        });
+      }
+    }
+
+    const successCount = results.filter(r => r.status === 'sent').length;
+    const failureCount = results.filter(r => r.status === 'failed').length;
+
+    res.json({
+      message: `Announcement sent to ${successCount} out of ${results.length} recipients (${failureCount} failed)`,
+      type: notificationType,
+      results
+    });
+  } catch (err) {
+    console.error('Announcement error:', err.message);
     res.status(500).send('Server Error');
   }
 });

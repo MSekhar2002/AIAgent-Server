@@ -54,3 +54,69 @@
 {"level":"debug","message":"Speech recognizer initialized for WAV","timestamp":"2025-06-06T07:50:39.232Z"}
 {"level":"info","message":"Speech recognized during processing","text":"Get all my schedules available.","timestamp":"2025-06-06T07:50:47.108Z"}
 {"confidence":"{\"Id\":\"848006e1b18a4df1b3b12a38cdf80d9c\",\"RecognitionStatus\":\"Success\",\"DisplayText\":\"Get all my schedules available.\",\"Offset\":16000000,\"Duration\":31600000,\"Channel\":0}","level":"info","message":"Speech recognized successfully","text":"Get all my schedules available.","timestamp":"2025-06-06T07:50:47.116Z"}
+{"attempt":1,"bufferSize":7565,"bufferType":"object","level":"debug","message":"Starting speech-to-text conversion","timestamp":"2025-07-02T04:39:16.034Z"}
+{"headerHex":"4f676753000200000000000000000000","level":"debug","message":"Audio buffer header","timestamp":"2025-07-02T04:39:21.117Z"}
+{"bufferSize":7565,"level":"debug","message":"Starting audio conversion","timestamp":"2025-07-02T04:39:23.273Z"}
+{"command":"ffmpeg -i C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\input_1751431163276.ogg -y -acodec pcm_s16le -ar 16000 -ac 1 -f wav C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\output_1751431163276.wav","level":"debug","message":"FFmpeg started","timestamp":"2025-07-02T04:39:25.929Z"}
+{"level":"debug","message":"FFmpeg progress","timestamp":"2025-07-02T04:39:26.039Z"}
+{"level":"debug","message":"FFmpeg conversion completed","timestamp":"2025-07-02T04:39:26.053Z"}
+{"level":"debug","message":"WAV conversion successful","timestamp":"2025-07-02T04:39:26.057Z","wavSize":106888}
+{"level":"debug","message":"Audio converted to WAV","timestamp":"2025-07-02T04:39:32.216Z","wavSize":106888}
+{"level":"debug","message":"Speech recognizer initialized for WAV","timestamp":"2025-07-02T04:39:40.198Z"}
+{"level":"info","message":"Speech recognized during processing","text":"Can you get all the locations available?","timestamp":"2025-07-02T04:39:47.224Z"}
+{"confidence":"{\"Id\":\"bff43ff24b7c44d58fcb95fab3adab7c\",\"RecognitionStatus\":\"Success\",\"DisplayText\":\"Can you get all the locations available?\",\"Offset\":10000000,\"Duration\":23200000,\"Channel\":0}","level":"info","message":"Speech recognized successfully","text":"Can you get all the locations available?","timestamp":"2025-07-02T04:39:47.229Z"}
+{"attempt":1,"bufferSize":7722,"bufferType":"object","level":"debug","message":"Starting speech-to-text conversion","timestamp":"2025-07-02T04:40:57.515Z"}
+{"headerHex":"4f676753000200000000000000000000","level":"debug","message":"Audio buffer header","timestamp":"2025-07-02T04:40:57.518Z"}
+{"bufferSize":7722,"level":"debug","message":"Starting audio conversion","timestamp":"2025-07-02T04:40:57.523Z"}
+{"command":"ffmpeg -i C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\input_1751431257525.ogg -y -acodec pcm_s16le -ar 16000 -ac 1 -f wav C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\output_1751431257525.wav","level":"debug","message":"FFmpeg started","timestamp":"2025-07-02T04:40:57.548Z"}
+{"level":"debug","message":"FFmpeg progress","timestamp":"2025-07-02T04:40:57.695Z"}
+{"level":"debug","message":"FFmpeg conversion completed","timestamp":"2025-07-02T04:40:57.716Z"}
+{"level":"debug","message":"WAV conversion successful","timestamp":"2025-07-02T04:40:57.719Z","wavSize":109448}
+{"level":"debug","message":"Audio converted to WAV","timestamp":"2025-07-02T04:40:57.723Z","wavSize":109448}
+{"level":"debug","message":"Speech recognizer initialized for WAV","timestamp":"2025-07-02T04:40:57.727Z"}
+{"level":"info","message":"Speech recognized during processing","text":"Can you get all the locations available?","timestamp":"2025-07-02T04:40:59.258Z"}
+{"confidence":"{\"Id\":\"d89b3da0baab42ee866c623e928c35c4\",\"RecognitionStatus\":\"Success\",\"DisplayText\":\"Can you get all the locations available?\",\"Offset\":13900000,\"Duration\":20000000,\"Channel\":0}","level":"info","message":"Speech recognized successfully","text":"Can you get all the locations available?","timestamp":"2025-07-02T04:40:59.267Z"}
+{"attempt":1,"bufferSize":8331,"bufferType":"object","level":"debug","message":"Starting speech-to-text conversion","timestamp":"2025-07-02T04:47:14.321Z"}
+{"headerHex":"4f676753000200000000000000000000","level":"debug","message":"Audio buffer header","timestamp":"2025-07-02T04:47:14.322Z"}
+{"bufferSize":8331,"level":"debug","message":"Starting audio conversion","timestamp":"2025-07-02T04:47:14.323Z"}
+{"command":"ffmpeg -i C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\input_1751431634324.ogg -y -acodec pcm_s16le -ar 16000 -ac 1 -f wav C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\output_1751431634324.wav","level":"debug","message":"FFmpeg started","timestamp":"2025-07-02T04:47:14.335Z"}
+{"level":"debug","message":"FFmpeg progress","timestamp":"2025-07-02T04:47:14.472Z"}
+{"level":"debug","message":"FFmpeg conversion completed","timestamp":"2025-07-02T04:47:14.483Z"}
+{"level":"debug","message":"WAV conversion successful","timestamp":"2025-07-02T04:47:14.486Z","wavSize":120328}
+{"level":"debug","message":"Audio converted to WAV","timestamp":"2025-07-02T04:47:14.487Z","wavSize":120328}
+{"level":"debug","message":"Speech recognizer initialized for WAV","timestamp":"2025-07-02T04:47:14.489Z"}
+{"level":"info","message":"Speech recognized during processing","text":"Can you get all the locations available?","timestamp":"2025-07-02T04:47:15.997Z"}
+{"confidence":"{\"Id\":\"0a7f3572091d40dd9a1d8f394ce95b72\",\"RecognitionStatus\":\"Success\",\"DisplayText\":\"Can you get all the locations available?\",\"Offset\":15600000,\"Duration\":21200000,\"Channel\":0}","level":"info","message":"Speech recognized successfully","text":"Can you get all the locations available?","timestamp":"2025-07-02T04:47:16.001Z"}
+{"attempt":1,"bufferSize":7135,"bufferType":"object","level":"debug","message":"Starting speech-to-text conversion","timestamp":"2025-07-02T04:47:39.239Z"}
+{"headerHex":"4f676753000200000000000000000000","level":"debug","message":"Audio buffer header","timestamp":"2025-07-02T04:47:39.242Z"}
+{"bufferSize":7135,"level":"debug","message":"Starting audio conversion","timestamp":"2025-07-02T04:47:39.243Z"}
+{"command":"ffmpeg -i C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\input_1751431659244.ogg -y -acodec pcm_s16le -ar 16000 -ac 1 -f wav C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\output_1751431659244.wav","level":"debug","message":"FFmpeg started","timestamp":"2025-07-02T04:47:39.255Z"}
+{"level":"debug","message":"FFmpeg progress","timestamp":"2025-07-02T04:47:39.423Z"}
+{"level":"debug","message":"FFmpeg conversion completed","timestamp":"2025-07-02T04:47:39.433Z"}
+{"level":"debug","message":"WAV conversion successful","timestamp":"2025-07-02T04:47:39.439Z","wavSize":99208}
+{"level":"debug","message":"Audio converted to WAV","timestamp":"2025-07-02T04:47:39.440Z","wavSize":99208}
+{"level":"debug","message":"Speech recognizer initialized for WAV","timestamp":"2025-07-02T04:47:39.445Z"}
+{"level":"info","message":"Speech recognized during processing","text":"Can you get all the users available?","timestamp":"2025-07-02T04:47:40.766Z"}
+{"confidence":"{\"Id\":\"9d4fb54d26554659b68fb03d29ac495f\",\"RecognitionStatus\":\"Success\",\"DisplayText\":\"Can you get all the users available?\",\"Offset\":10500000,\"Duration\":19900000,\"Channel\":0}","level":"info","message":"Speech recognized successfully","text":"Can you get all the users available?","timestamp":"2025-07-02T04:47:40.770Z"}
+{"attempt":1,"bufferSize":44791,"bufferType":"object","level":"debug","message":"Starting speech-to-text conversion","timestamp":"2025-07-02T04:49:01.024Z"}
+{"headerHex":"4f676753000200000000000000000000","level":"debug","message":"Audio buffer header","timestamp":"2025-07-02T04:49:01.025Z"}
+{"bufferSize":44791,"level":"debug","message":"Starting audio conversion","timestamp":"2025-07-02T04:49:01.026Z"}
+{"command":"ffmpeg -i C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\input_1751431741029.ogg -y -acodec pcm_s16le -ar 16000 -ac 1 -f wav C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\output_1751431741029.wav","level":"debug","message":"FFmpeg started","timestamp":"2025-07-02T04:49:01.039Z"}
+{"level":"debug","message":"FFmpeg progress","timestamp":"2025-07-02T04:49:01.213Z"}
+{"level":"debug","message":"FFmpeg conversion completed","timestamp":"2025-07-02T04:49:01.222Z"}
+{"level":"debug","message":"WAV conversion successful","timestamp":"2025-07-02T04:49:01.225Z","wavSize":718728}
+{"level":"debug","message":"Audio converted to WAV","timestamp":"2025-07-02T04:49:01.227Z","wavSize":718728}
+{"level":"debug","message":"Speech recognizer initialized for WAV","timestamp":"2025-07-02T04:49:01.235Z"}
+{"level":"info","message":"Speech recognized during processing","text":"Create a location named Raju's office address.","timestamp":"2025-07-02T04:49:04.110Z"}
+{"confidence":"{\"Id\":\"dcf02ee4e8774cc6b721f8516977a705\",\"RecognitionStatus\":\"Success\",\"DisplayText\":\"Create a location named Raju's office address.\",\"Offset\":9500000,\"Duration\":50800000,\"Channel\":0}","level":"info","message":"Speech recognized successfully","text":"Create a location named Raju's office address.","timestamp":"2025-07-02T04:49:04.115Z"}
+{"attempt":1,"bufferSize":6078,"bufferType":"object","level":"debug","message":"Starting speech-to-text conversion","timestamp":"2025-07-02T04:49:25.338Z"}
+{"headerHex":"4f676753000200000000000000000000","level":"debug","message":"Audio buffer header","timestamp":"2025-07-02T04:49:25.339Z"}
+{"bufferSize":6078,"level":"debug","message":"Starting audio conversion","timestamp":"2025-07-02T04:49:25.340Z"}
+{"command":"ffmpeg -i C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\input_1751431765341.ogg -y -acodec pcm_s16le -ar 16000 -ac 1 -f wav C:\\Users\\Sekharai\\Desktop\\AiAgent\\AIAgent-Server\\utils\\temp\\output_1751431765341.wav","level":"debug","message":"FFmpeg started","timestamp":"2025-07-02T04:49:25.351Z"}
+{"level":"debug","message":"FFmpeg progress","timestamp":"2025-07-02T04:49:25.444Z"}
+{"level":"debug","message":"FFmpeg conversion completed","timestamp":"2025-07-02T04:49:25.465Z"}
+{"level":"debug","message":"WAV conversion successful","timestamp":"2025-07-02T04:49:25.468Z","wavSize":83848}
+{"level":"debug","message":"Audio converted to WAV","timestamp":"2025-07-02T04:49:25.471Z","wavSize":83848}
+{"level":"debug","message":"Speech recognizer initialized for WAV","timestamp":"2025-07-02T04:49:25.473Z"}
+{"level":"info","message":"Speech recognized during processing","text":"Get all the locations available.","timestamp":"2025-07-02T04:49:26.594Z"}
+{"confidence":"{\"Id\":\"a0769171a5f243f5bc3f1a228238dc88\",\"RecognitionStatus\":\"Success\",\"DisplayText\":\"Get all the locations available.\",\"Offset\":9900000,\"Duration\":16000000,\"Channel\":0}","level":"info","message":"Speech recognized successfully","text":"Get all the locations available.","timestamp":"2025-07-02T04:49:26.602Z"}

@@ -3,7 +3,7 @@ const router = express.Router();
 const auth = require('../../middleware/auth');
 const admin = require('../../middleware/admin');
 const Location = require('../../models/Location');
-const axios = require('axios');
+const User = require('../../models/User');
 
 // @route   POST api/locations
 // @desc    Create a location
@@ -17,10 +17,12 @@ router.post('/', [auth, admin], async (req, res) => {
     zipCode,
     country,
     coordinates,
-    description
+    description,
+    
   } = req.body;
 
   try {
+    const user = await User.findById(req.user.id);
     // Create new location
     const newLocation = new Location({
       name,
@@ -28,9 +30,10 @@ router.post('/', [auth, admin], async (req, res) => {
       city,
       state,
       zipCode,
-      country: country || 'USA',
+      country: country || '',
       coordinates,
       description,
+      team: user.team,
       createdBy: req.user.id
     });
 
@@ -49,7 +52,17 @@ router.post('/', [auth, admin], async (req, res) => {
 // @access  Private
 router.get('/', auth, async (req, res) => {
   try {
-    const locations = await Location.find({ active: true })
+    // Get user with team info
+    const user = await User.findById(req.user.id);
+    
+    let query = {};
+    
+    // If user has a team, filter locations by team or no team (shared locations)
+    if (user.team) {
+      query = { $or: [{ team: user.team }, { team: null }] };
+    }
+    
+    const locations = await Location.find(query)
       .populate('createdBy', 'name')
       .sort({ name: 1 });
     

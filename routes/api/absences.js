@@ -35,10 +35,14 @@ router.post('/', auth, async (req, res) => {
       return res.status(401).json({ msg: 'User not assigned to this schedule' });
     }
 
+    // Get user to get team
+    const user = await User.findById(req.user.id);
+
     // Create new absence record
     const newAbsence = new Absence({
       user: req.user.id,
       schedule: scheduleId,
+      team: user.team, // Add team from user
       startDate,
       endDate,
       reason,
@@ -55,7 +59,7 @@ router.post('/', auth, async (req, res) => {
 
     // Notify admin about the absence
     const admins = await User.find({ role: 'admin' });
-    const user = await User.findById(req.user.id);
+    // const user = await User.findById(req.user.id);
 
     // Create notifications for admins
     for (const admin of admins) {
@@ -297,12 +301,22 @@ router.get('/user', auth, async (req, res) => {
 // @access  Private/Admin
 router.get('/', [auth, admin], async (req, res) => {
   try {
-    const absences = await Absence.find()
-      .populate('user', 'name email department position')
+    // Get user with team info
+    const user = await User.findById(req.user.id);
+    
+    let query = {};
+    
+    // If user has a team, filter absences by team
+    if (user.team) {
+      query = { team: user.team };
+    }
+    
+    const absences = await Absence.find(query)
+      .populate('user', 'name email')
       .populate('schedule', 'title date startTime endTime')
       .populate('replacementUser', 'name email')
       .sort({ createdAt: -1 });
-
+    
     res.json(absences);
   } catch (err) {
     console.error(err.message);

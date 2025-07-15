@@ -37,6 +37,11 @@ const LocationSchema = new Schema({
       required: true
     }
   },
+  team: {
+    type: Schema.Types.ObjectId,
+    ref: 'team',
+    required: false
+  },
   description: {
     type: String,
     required: false
