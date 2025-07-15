@@ -1136,3 +1136,11 @@
 {"level":"info","message":"Settings retrieved","timestamp":"2025-07-11T14:43:33.021Z"}
 {"level":"debug","message":"Fetching WhatsApp settings","timestamp":"2025-07-11T14:43:33.292Z"}
 {"level":"info","message":"Settings retrieved","timestamp":"2025-07-11T14:43:33.813Z"}
+{"level":"debug","message":"Fetching conversations","timestamp":"2025-07-14T08:43:07.184Z"}
+{"count":0,"level":"info","message":"Conversations retrieved","timestamp":"2025-07-14T08:43:07.418Z"}
+{"level":"debug","message":"Fetching conversations","timestamp":"2025-07-14T08:43:07.658Z"}
+{"level":"debug","message":"Fetching WhatsApp settings","timestamp":"2025-07-14T08:43:07.673Z"}
+{"count":0,"level":"info","message":"Conversations retrieved","timestamp":"2025-07-14T08:43:07.891Z"}
+{"level":"info","message":"Settings retrieved","timestamp":"2025-07-14T08:43:08.140Z"}
+{"level":"debug","message":"Fetching WhatsApp settings","timestamp":"2025-07-14T08:43:08.392Z"}
+{"level":"info","message":"Settings retrieved","timestamp":"2025-07-14T08:43:08.859Z"}
