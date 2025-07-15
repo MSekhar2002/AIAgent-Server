@@ -17,7 +17,7 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
-      'https://ai-agent-psi-six.vercel.app',
+      process.env.CLIENT_URL,
       'http://localhost:3000',
       'http://localhost:5000',
       'http://127.0.0.1:3000',
@@ -68,7 +68,7 @@ app.get('/', (req, res) => {
 
 // Connect to MongoDB
 mongoose
-  .connect(process.env.MONGO_URI || 'mongodb://localhost:27017/employee-scheduling', {
+  .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
