@@ -6,7 +6,7 @@ const auth = require('../../middleware/auth');
 const admin = require('../../middleware/admin');
 const User = require('../../models/User');
 const { sendWelcomeEmail } = require('../../utils/emailService');
-const { sendWhatsAppMessage, sendWelcomeWhatsApp } = require('../../utils/whatsappService');
+const { sendWhatsAppMessage, sendWelcomeWhatsApp } = require('../../utils/twilioService');
 
 // @route   POST api/users
 // @desc    Register a user (Admin creates employee)
@@ -139,7 +139,7 @@ router.post('/register', async (req, res) => {
 
       // Send WhatsApp welcome message
       if (user.notificationPreferences.whatsapp && user.phone) {
-        await sendWelcomeWhatsApp(user, 'Employee Scheduling System');
+        await sendWelcomeWhatsApp(user, "Employee Scheduling System", true);
       }
     } catch (notificationErr) {
       console.error('Notification error:', notificationErr.message);
