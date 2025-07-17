@@ -136,7 +136,7 @@ router.post('/register', async (req, res) => {
         team:user.team
       });
       await settings.save();
-      logger.info('Created default WhatsApp settings');
+      console.log('Created default WhatsApp settings');
     }
 
     // Send welcome notifications
