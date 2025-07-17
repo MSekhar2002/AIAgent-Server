@@ -682,9 +682,7 @@ router.get('/settings', [auth, admin], async (req, res) => {
     }
     let settings = await WhatsAppSettings.findOne();
     if (!settings) {
-      settings = new WhatsAppSettings({
-        team:user.team
-      });
+      settings = new WhatsAppSettings();
       await settings.save();
       logger.info('Created default WhatsApp settings');
     }

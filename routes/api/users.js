@@ -7,6 +7,7 @@ const admin = require('../../middleware/admin');
 const User = require('../../models/User');
 const { sendWelcomeEmail } = require('../../utils/emailService');
 const { sendWhatsAppMessage, sendWelcomeWhatsApp } = require('../../utils/twilioService');
+const WhatsAppSettings = require('../../models/WhatsAppSettings');
 
 // @route   POST api/users
 // @desc    Register a user (Admin creates employee)
@@ -129,6 +130,14 @@ router.post('/register', async (req, res) => {
 
     // Save user
     await user.save();
+    let settings = await WhatsAppSettings.findOne();
+    if (!settings) {
+      settings = new WhatsAppSettings({
+        team:user.team
+      });
+      await settings.save();
+      logger.info('Created default WhatsApp settings');
+    }
 
     // Send welcome notifications
     try {

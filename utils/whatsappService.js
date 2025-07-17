@@ -103,7 +103,7 @@ const sendScheduleWhatsApp = async (user, schedule, location) => {
       throw new Error('WhatsApp integration is disabled');
     }
 
-    const template = settings.templates?.scheduleReminder;
+    const template = settings.templates?.schedule_reminder;
     if (!template || !template.name) {
       throw new Error('Schedule reminder template not configured');
     }
@@ -133,7 +133,7 @@ const sendWelcomeWhatsApp = async (user, companyName) => {
       throw new Error('WhatsApp integration is disabled');
     }
 
-    const template = settings.templates?.welcomeMessage;
+    const template = settings.templates?.welcome_message;
     if (!template || !template.name) {
       throw new Error('Welcome message template not configured');
     }

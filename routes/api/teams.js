@@ -1,11 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../../middleware/auth');
-const admin = require('../../middleware/admin');
 const { teamMember, teamOwner } = require('../../middleware/team');
 const Team = require('../../models/Team');
 const User = require('../../models/User');
-const WhatsAppSettings = require('../../models/WhatsAppSettings');
 
 // @route   POST api/teams
 // @desc    Create a team
@@ -37,15 +35,6 @@ router.post('/', auth, async (req, res) => {
     user.isTeamAdmin = true;
     user.role= "admin" ;
     await user.save();
-
-    let settings = await WhatsAppSettings.findOne();
-    if (!settings) {
-      settings = new WhatsAppSettings({
-        team:user.team
-      });
-      await settings.save();
-      logger.info('Created default WhatsApp settings');
-    }
 
     res.json(team);
   } catch (err) {
