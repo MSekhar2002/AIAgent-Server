@@ -11,6 +11,7 @@ const { sendWhatsAppMessage } = require('../../utils/whatsappService');
 const { getTrafficData, getRouteInfo } = require('../../utils/mapsService');
 const { sendAnnouncementWhatsApp } = require('../../utils/twilioService');
 const mongoose = require('mongoose');
+const { processWithAzureOpenAI } = require('../../utils/aiService');
 // @route   POST api/notifications
 // @desc    Create and send a notification
 // @access  Private/Admin
