@@ -37,6 +37,15 @@ router.post('/', auth, async (req, res) => {
     user.role= "admin" ;
     await user.save();
 
+    let settings = await WhatsAppSettings.findOne();
+    if (!settings) {
+      settings = new WhatsAppSettings({
+        team:user.team
+      });
+      await settings.save();
+      logger.info('Created default WhatsApp settings');
+    }
+    
     res.json(team);
   } catch (err) {
     console.error(err.message);
