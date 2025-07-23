@@ -45,7 +45,6 @@ router.post('/', [auth, admin], async (req, res) => {
       department,
       position,
       defaultLocation,
-      team: user.team,
       notificationPreferences: notificationPreferences || {
         email: true,
         whatsapp: phone ? true : false
