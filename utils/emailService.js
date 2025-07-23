@@ -46,17 +46,17 @@ const sendEmail = async (to, subject, text, html) => {
 const sendWelcomeEmail = async (user) => {
   const subject = 'Welcome to the Employee Scheduling System';
   const text = `
-Hello ${user.name},/n/n
+Hello ${user.name},\n\n
 
-Welcome to the Employee Scheduling System! Your account has been created successfully./n/n
+Welcome to the Employee Scheduling System! Your account has been created successfully.\n\n
 
-Your login credentials:/n
-Email: ${user.email}/n
-Password: (The password set by your administrator)/n/n
+Your login credentials:\n
+Email: ${user.email}\n
+Password: (The password set by your administrator)\n\n
 
-Please log in to the system to view your schedule and update your profile./n/n
+Please log in to the system to view your schedule and update your profile.\n\n
 
-Best regards,/n
+Best regards,\n
 The Management Team
   `;
   
@@ -74,16 +74,16 @@ const sendScheduleNotification = async (user, schedule, location) => {
   const text = `
 Hello ${user.name},
 
-You have been assigned to the following schedule:/n/n
+You have been assigned to the following schedule:\n\n
 
-Title: ${schedule.title} /n
-Date: ${new Date(schedule.date).toLocaleDateString()} /n
-Time: ${schedule.startTime} - ${schedule.endTime}/n
-Location: ${location.name}, ${location.address}, ${location.city}, ${location.state}/n/n
+Title: ${schedule.title} \n
+Date: ${new Date(schedule.date).toLocaleDateString()} \n
+Time: ${schedule.startTime} - ${schedule.endTime}\n
+Location: ${location.name}, ${location.address}, ${location.city}, ${location.state}\n\n
 
-Please log in to the system for more details./n/n
+Please log in to the system for more details.\n\n
 
-Best regards,/n
+Best regards,\n
 The Management Team
   `;
   
