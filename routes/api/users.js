@@ -19,8 +19,9 @@ router.post('/', [auth, admin], async (req, res) => {
     password, 
     phone, 
     role, 
+    team,
     department, 
-    position, 
+    position,
     notificationPreferences,
     defaultLocation
   } = req.body;
@@ -38,6 +39,7 @@ router.post('/', [auth, admin], async (req, res) => {
       name,
       email,
       password,
+      team: team || '',
       phone,
       role: role || 'employee',
       department,
