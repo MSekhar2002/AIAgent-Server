@@ -154,6 +154,7 @@ exports.generateMongoDBQuery = async (message, user, modelSchemas, conversationH
       content: `You are a MongoDB query generator for an Employee Scheduling System.
 
 Current date: ${currentDate}
+User Role : ${user?.role}
 
 Available models and schemas:
 ${JSON.stringify(simplifiedSchemas, null, 2)}

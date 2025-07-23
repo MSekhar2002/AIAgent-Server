@@ -165,6 +165,7 @@ router.post('/', [auth, admin], async (req, res) => {
 
           // In PUT route (update schedule) - around line 470:
           // Send WhatsApp notification
+          console.log('Whatsapp sending started:', info.messageId);
           if (employee.notificationPreferences.whatsapp && employee.phone) {
             await sendScheduleChangeWhatsApp(employee, schedule, locationDoc, true); // Set isOutsideSession to true
             notification.status = 'sent';
